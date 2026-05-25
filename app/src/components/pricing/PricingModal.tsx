@@ -149,7 +149,7 @@ export function PricingModal({
     
     const result = await createCheckoutSession(
       plan,
-      `${window.location.origin}/billing/success`,
+      `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       `${window.location.origin}/billing/cancel`
     );
 

@@ -96,6 +96,7 @@ import {
   MockInterview,
   StressReviewPage,
   ReadinessCheckPage,
+  SecurePartnerSync,
 } from '@/components/practice';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { SuperAdminPortal } from '@/components/admin/SuperAdminPortal';
@@ -1486,7 +1487,7 @@ function Footer({ navigate, onAdminClick }: { navigate: (page: Page) => void; on
 }
 
 // ==================== MAIN APP ====================
-type ViewMode = 'home' | 'practice' | 'saved' | 'progress' | 'dashboard' | 'quick-practice' | 'mock-interview' | 'stress-review' | 'readiness';
+type ViewMode = 'home' | 'practice' | 'saved' | 'progress' | 'dashboard' | 'quick-practice' | 'mock-interview' | 'stress-review' | 'readiness' | 'partner-sync';
 
 function HomePage({
   navigate,
@@ -1495,7 +1496,7 @@ function HomePage({
   navigate: (page: Page) => void;
   initialViewMode?: ViewMode;
 }) {
-  const { isSuperAdmin } = useOptionalAuth();
+  const { isAdmin, isSuperAdmin } = useOptionalAuth();
   const [showAdmin, setShowAdmin] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
@@ -1565,6 +1566,11 @@ function HomePage({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleViewPartnerSync = () => {
+    setViewMode('partner-sync');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Note: handleViewDashboard and handleViewReadiness are integrated into the Dashboard component directly
 
   // Handle returning to home
@@ -1584,85 +1590,144 @@ function HomePage({
     }
   };
 
+  const adminOverlays = showAdmin ? (
+    isSuperAdmin ? (
+      <SuperAdminPortal onClose={() => setShowAdmin(false)} />
+    ) : (
+      <AdminPanel onClose={() => setShowAdmin(false)} />
+    )
+  ) : null;
+
   // Render different views based on mode
   if (viewMode === 'saved') {
     return (
-      <SavedForLaterPage
-        onBack={handleReturnHome}
-        onPracticeQuestion={handlePracticeQuestion}
-      />
+      <>
+        <SavedForLaterPage
+          onBack={handleReturnHome}
+          onPracticeQuestion={handlePracticeQuestion}
+        />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'progress') {
     return (
-      <ProgressDashboard
-        onBack={handleReturnHome}
-        onPracticeTopic={(topicId) => {
-          const foundTopic = topics.find(t => t.id === topicId);
-          if (foundTopic) {
-            const practiceTopic = normalizedTopics.find(t => t.id === foundTopic.id);
-            if (practiceTopic) {
-              setActivePracticeTopic(practiceTopic);
-              setViewMode('practice');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+      <>
+        <ProgressDashboard
+          onBack={handleReturnHome}
+          onPracticeTopic={(topicId) => {
+            const foundTopic = topics.find(t => t.id === topicId);
+            if (foundTopic) {
+              const practiceTopic = normalizedTopics.find(t => t.id === foundTopic.id);
+              if (practiceTopic) {
+                setActivePracticeTopic(practiceTopic);
+                setViewMode('practice');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'practice' && activePracticeTopic) {
     return (
-      <TopicPracticePage
-        topic={activePracticeTopic}
-        allTopics={normalizedTopics}
-        onBack={handleReturnHome}
-      />
+      <>
+        <TopicPracticePage
+          topic={activePracticeTopic}
+          allTopics={normalizedTopics}
+          onBack={handleReturnHome}
+        />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'dashboard') {
     return (
-      <Dashboard
-        onPracticeTopic={handlePractice}
-        onStartQuickPractice={() => setViewMode('quick-practice')}
-        onStartMockInterview={() => setViewMode('mock-interview')}
-        onViewSaved={() => setViewMode('saved')}
-        onViewProgress={() => setViewMode('progress')}
-        onViewTimeline={() => { /* scroll to timeline */ }}
-        onViewCouplePractice={() => { /* show couple practice */ }}
-      />
+      <>
+        <Dashboard
+          onPracticeTopic={handlePractice}
+          onStartQuickPractice={() => setViewMode('quick-practice')}
+          onStartMockInterview={() => setViewMode('mock-interview')}
+          onViewSaved={() => setViewMode('saved')}
+          onViewProgress={() => setViewMode('progress')}
+          onViewTimeline={() => { /* scroll to timeline */ }}
+          onViewCouplePractice={handleViewPartnerSync}
+          onUpgrade={() => navigate('pricing')}
+          onViewAdmin={() => setShowAdmin(true)}
+          canViewAdmin={isAdmin || isSuperAdmin}
+        />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'quick-practice') {
     return (
-      <QuickPractice onBack={() => setViewMode('dashboard')} />
+      <>
+        <QuickPractice onBack={() => setViewMode('dashboard')} />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'mock-interview') {
     return (
-      <MockInterview onBack={() => setViewMode('dashboard')} />
+      <>
+        <MockInterview onBack={() => setViewMode('dashboard')} />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'stress-review') {
     return (
-      <StressReviewPage 
-        onBack={() => setViewMode('dashboard')}
-        onPracticeQuestion={handlePracticeQuestion}
-      />
+      <>
+        <StressReviewPage 
+          onBack={() => setViewMode('dashboard')}
+          onPracticeQuestion={handlePracticeQuestion}
+        />
+        {adminOverlays}
+      </>
     );
   }
 
   if (viewMode === 'readiness') {
     return (
-      <ReadinessCheckPage 
-        onBack={() => setViewMode('dashboard')}
-      />
+      <>
+        <ReadinessCheckPage 
+          onBack={() => setViewMode('dashboard')}
+        />
+        {adminOverlays}
+      </>
+    );
+  }
+
+  if (viewMode === 'partner-sync') {
+    return (
+      <>
+        <div className="min-h-screen bg-slate-50/50 pb-20">
+          <header className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Premium collaboration</p>
+                <h1 className="text-xl font-semibold text-slate-900">Partner Sync</h1>
+              </div>
+              <Button variant="outline" onClick={() => setViewMode('dashboard')}>
+                Back to Dashboard
+              </Button>
+            </div>
+          </header>
+          <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+            <SecurePartnerSync onUpgrade={() => navigate('pricing')} />
+          </main>
+        </div>
+        {adminOverlays}
+      </>
     );
   }
 
@@ -1739,13 +1804,8 @@ function HomePage({
         trialDaysLeft={trialDaysLeft}
       />
 
-      {/* Admin Panel */}
-      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
-      
-      {/* SuperAdmin Portal */}
-      {showAdmin && isSuperAdmin && (
-        <SuperAdminPortal onClose={() => setShowAdmin(false)} />
-      )}
+      {/* Admin Portal */}
+      {adminOverlays}
       
       {/* Note: InterstitialAd for PDF downloads has been removed */}
       {/* PDFs now use SecurePDFDownload with Supabase signed URLs */}

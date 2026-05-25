@@ -12,12 +12,14 @@ import { CheckCircle, Loader2, Sparkles, ArrowRight, RefreshCw } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
+import { confirmCheckoutSession } from '@/lib/subscriptions';
 
 export function BillingSuccessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isActivating, setIsActivating] = useState(true);
   const [checkCount, setCheckCount] = useState(0);
+  const [confirmationAttempted, setConfirmationAttempted] = useState(false);
 
   // Get session_id from URL
   const sessionId = typeof window !== 'undefined' 
@@ -34,6 +36,14 @@ export function BillingSuccessPage() {
         setIsActivating(false);
         setIsLoading(false);
         return;
+      }
+
+      if (sessionId && !confirmationAttempted) {
+        setConfirmationAttempted(true);
+        const confirmation = await confirmCheckoutSession(sessionId);
+        if (!confirmation.success) {
+          console.warn('Checkout confirmation fallback did not activate access yet:', confirmation.error);
+        }
       }
 
       // Fetch current subscription
@@ -71,7 +81,7 @@ export function BillingSuccessPage() {
       setIsActivating(false);
       setIsLoading(false);
     }
-  }, [checkCount]);
+  }, [checkCount, confirmationAttempted, sessionId]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -93,6 +103,7 @@ export function BillingSuccessPage() {
     setIsLoading(true);
     setIsActivating(true);
     setCheckCount(0);
+    setConfirmationAttempted(false);
     checkSubscriptionStatus();
   };
 

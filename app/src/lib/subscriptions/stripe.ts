@@ -33,6 +33,14 @@ export interface PortalSessionResult {
   code?: string;
 }
 
+export interface CheckoutConfirmationResult {
+  success: boolean;
+  planType?: PlanType;
+  sessionId?: string;
+  error?: string;
+  code?: string;
+}
+
 // ============================================================================
 // CHECKOUT
 // ============================================================================
@@ -121,6 +129,44 @@ export async function redirectToCheckout(
   }
 
   return false;
+}
+
+/**
+ * Confirm a completed Stripe Checkout session and activate access.
+ *
+ * This is a webhook fallback for test mode and delayed webhook delivery.
+ * The server verifies the session belongs to the authenticated user before
+ * applying any subscription changes.
+ */
+export async function confirmCheckoutSession(
+  sessionId: string
+): Promise<CheckoutConfirmationResult> {
+  try {
+    const { data, error } = await apiClient.invokeFunction<CheckoutConfirmationResult>(
+      'confirm-checkout-session',
+      { sessionId }
+    );
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message || 'Failed to confirm checkout',
+        code: error.code,
+      };
+    }
+
+    return {
+      success: Boolean(data?.success),
+      planType: data?.planType,
+      sessionId: data?.sessionId,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+      code: 'UNKNOWN_ERROR',
+    };
+  }
 }
 
 // ============================================================================

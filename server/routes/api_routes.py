@@ -615,6 +615,118 @@ def delete_table(table_name):
         return jsonify({'error': str(e)}), 500
 
 
+@api_bp.route('/admin/system-status', methods=['GET'])
+@require_admin
+def admin_system_status():
+    from datetime import datetime, timezone
+
+    stripe_secret = os.getenv('STRIPE_SECRET_KEY', '')
+    stripe_publishable = os.getenv('STRIPE_PUBLISHABLE_KEY', '') or os.getenv('VITE_STRIPE_PUBLISHABLE_KEY', '')
+    stripe_webhook = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+
+    if stripe_secret.startswith('sk_test_'):
+        stripe_mode = 'test'
+    elif stripe_secret.startswith('sk_live_'):
+        stripe_mode = 'live'
+    elif stripe_secret:
+        stripe_mode = 'unknown'
+    else:
+        stripe_mode = 'not_configured'
+
+    price_status = {
+        'monthly': {
+            'planType': 'monthly',
+            'label': 'Premium Monthly',
+            'configured': bool(os.getenv('STRIPE_PRICE_ID_MONTHLY')),
+            'envVar': 'STRIPE_PRICE_ID_MONTHLY',
+            'expectedAmount': 1999,
+            'currency': 'usd',
+            'mode': 'subscription',
+        },
+        'lifetime': {
+            'planType': 'lifetime',
+            'label': 'Lifetime Access',
+            'configured': bool(os.getenv('STRIPE_PRICE_ID_LIFETIME')),
+            'envVar': 'STRIPE_PRICE_ID_LIFETIME',
+            'expectedAmount': 7999,
+            'currency': 'usd',
+            'mode': 'payment',
+        },
+        'interviewPass': {
+            'planType': 'interviewPass',
+            'label': '90-Day Interview Pass',
+            'configured': bool(os.getenv('STRIPE_PRICE_ID_INTERVIEW_PASS')),
+            'envVar': 'STRIPE_PRICE_ID_INTERVIEW_PASS',
+            'expectedAmount': 3999,
+            'currency': 'usd',
+            'mode': 'payment',
+        },
+    }
+
+    providers = [
+        {
+            'provider': 'openai',
+            'label': 'OpenAI',
+            'configured': bool(os.getenv('OPENAI_API_KEY')),
+            'defaultModel': os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-5-mini'),
+            'modelCount': 3,
+        },
+        {
+            'provider': 'anthropic',
+            'label': 'Anthropic',
+            'configured': bool(os.getenv('ANTHROPIC_API_KEY')),
+            'defaultModel': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-5-sonnet-latest'),
+            'modelCount': 2,
+        },
+        {
+            'provider': 'deepseek',
+            'label': 'DeepSeek',
+            'configured': bool(os.getenv('DEEPSEEK_API_KEY')),
+            'defaultModel': os.getenv('DEEPSEEK_DEFAULT_MODEL', 'deepseek-chat'),
+            'modelCount': 2,
+        },
+        {
+            'provider': 'nvidia',
+            'label': 'NVIDIA',
+            'configured': bool(os.getenv('NVIDIA_API_KEY')),
+            'defaultModel': os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct'),
+            'modelCount': 3,
+        },
+    ]
+
+    auto_create_test_prices = (
+        stripe_mode == 'test'
+        and os.getenv('STRIPE_AUTO_CREATE_TEST_PRICES', 'true').lower() in ('1', 'true', 'yes')
+    )
+    checkout_ready = bool(stripe_secret) and (
+        all(price['configured'] for price in price_status.values()) or auto_create_test_prices
+    )
+
+    return jsonify({
+        'serverTime': datetime.now(timezone.utc).isoformat(),
+        'environment': os.getenv('FLASK_ENV', 'production'),
+        'frontendUrl': os.getenv('FRONTEND_URL', ''),
+        'ai': {
+            'defaultProvider': os.getenv('AI_DEFAULT_PROVIDER', 'nvidia' if os.getenv('NVIDIA_API_KEY') else 'openai'),
+            'defaultModel': os.getenv('AI_DEFAULT_MODEL', os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct')),
+            'providers': providers,
+        },
+        'stripe': {
+            'mode': stripe_mode,
+            'secretKeyConfigured': bool(stripe_secret),
+            'publishableKeyConfigured': bool(stripe_publishable),
+            'webhookConfigured': bool(stripe_webhook),
+            'autoCreateTestPrices': auto_create_test_prices,
+            'checkoutReady': checkout_ready,
+            'webhookReady': bool(stripe_secret and stripe_webhook),
+            'prices': price_status,
+        },
+        'database': {
+            'urlConfigured': bool(os.getenv('DATABASE_URL')),
+        },
+    })
+
+
 @api_bp.route('/process-refund', methods=['POST'])
 @require_admin
 def process_refund():

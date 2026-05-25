@@ -10,10 +10,10 @@ stripe_bp = Blueprint('stripe', __name__)
 
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY', '')
 
-PRICE_ID_MAP = {
-    'monthly': os.getenv('STRIPE_PRICE_ID_MONTHLY'),
-    'lifetime': os.getenv('STRIPE_PRICE_ID_LIFETIME'),
-    'interviewPass': os.getenv('STRIPE_PRICE_ID_INTERVIEW_PASS'),
+PRICE_ENV_MAP = {
+    'monthly': 'STRIPE_PRICE_ID_MONTHLY',
+    'lifetime': 'STRIPE_PRICE_ID_LIFETIME',
+    'interviewPass': 'STRIPE_PRICE_ID_INTERVIEW_PASS',
 }
 
 PLAN_PRICES = {
@@ -22,10 +22,76 @@ PLAN_PRICES = {
     'interviewPass': 3999,
 }
 
+PLAN_LABELS = {
+    'monthly': 'InterviewReady Premium Monthly',
+    'lifetime': 'InterviewReady Lifetime Access',
+    'interviewPass': 'InterviewReady 90-Day Interview Pass',
+}
+
+
+def _refresh_stripe_key():
+    stripe.api_key = os.getenv('STRIPE_SECRET_KEY', '')
+    return stripe.api_key
+
+
+def _get_or_create_test_price(plan_type):
+    secret_key = _refresh_stripe_key()
+    if not secret_key.startswith('sk_test_'):
+        return None
+
+    lookup_key = f"interviewready_{plan_type}_test_v1"
+    existing = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1)
+    if existing.data:
+        return existing.data[0].id
+
+    product = stripe.Product.create(
+        name=PLAN_LABELS[plan_type],
+        metadata={
+            'app_source': 'interview_ready',
+            'plan_type': plan_type,
+            'environment': 'test',
+        }
+    )
+
+    params = {
+        'unit_amount': PLAN_PRICES[plan_type],
+        'currency': 'usd',
+        'product': product.id,
+        'lookup_key': lookup_key,
+        'metadata': {
+            'app_source': 'interview_ready',
+            'plan_type': plan_type,
+            'environment': 'test',
+        }
+    }
+
+    if plan_type == 'monthly':
+        params['recurring'] = {'interval': 'month'}
+
+    price = stripe.Price.create(**params)
+    return price.id
+
+
+def _get_price_id(plan_type):
+    env_var = PRICE_ENV_MAP[plan_type]
+    configured = os.getenv(env_var)
+    if configured:
+        return configured
+
+    auto_create = os.getenv('STRIPE_AUTO_CREATE_TEST_PRICES', 'true').lower() in ('1', 'true', 'yes')
+    if auto_create:
+        try:
+            return _get_or_create_test_price(plan_type)
+        except stripe.error.StripeError:
+            return None
+
+    return None
+
 
 @stripe_bp.route('/create-checkout-session', methods=['POST'])
 @require_auth
 def create_checkout_session():
+    _refresh_stripe_key()
     user = request.current_user
     data = request.get_json()
     plan_type = data.get('planType')
@@ -33,10 +99,13 @@ def create_checkout_session():
     cancel_url = data.get('cancelUrl')
     promo_code = data.get('promoCode')
 
-    if plan_type not in PRICE_ID_MAP:
+    if plan_type not in PRICE_ENV_MAP:
         return jsonify({'error': 'Invalid plan type'}), 400
 
-    price_id = PRICE_ID_MAP[plan_type]
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    price_id = _get_price_id(plan_type)
     if not price_id:
         return jsonify({'error': 'Payment not configured for this plan', 'code': 'PRICE_NOT_CONFIGURED'}), 503
 
@@ -85,6 +154,10 @@ def create_checkout_session():
     frontend_url = os.getenv('FRONTEND_URL', request.headers.get('Origin', 'http://localhost:5173'))
     default_success = f"{frontend_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
     default_cancel = f"{frontend_url}/billing/cancel"
+    final_success_url = success_url or default_success
+    if '{CHECKOUT_SESSION_ID}' not in final_success_url:
+        separator = '&' if '?' in final_success_url else '?'
+        final_success_url = f"{final_success_url}{separator}session_id={{CHECKOUT_SESSION_ID}}"
 
     is_subscription = plan_type == 'monthly'
     mode = 'subscription' if is_subscription else 'payment'
@@ -92,7 +165,7 @@ def create_checkout_session():
     session_params = {
         'customer': customer_id,
         'mode': mode,
-        'success_url': success_url or default_success,
+        'success_url': final_success_url,
         'cancel_url': cancel_url or default_cancel,
         'line_items': [{'price': price_id, 'quantity': 1}],
         'client_reference_id': user['id'],
@@ -140,9 +213,48 @@ def create_checkout_session():
     return jsonify(response)
 
 
+@stripe_bp.route('/confirm-checkout-session', methods=['POST'])
+@require_auth
+def confirm_checkout_session():
+    _refresh_stripe_key()
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    user = request.current_user
+    data = request.get_json() or {}
+    session_id = data.get('sessionId')
+    if not session_id:
+        return jsonify({'error': 'Checkout session ID required'}), 400
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Unable to retrieve checkout session: {str(e)}'}), 502
+
+    metadata = session.get('metadata', {}) or {}
+    session_user_id = metadata.get('user_id') or session.get('client_reference_id')
+    if str(session_user_id) != str(user['id']):
+        return jsonify({'error': 'Checkout session does not belong to the current user'}), 403
+
+    if session.get('status') != 'complete' or session.get('payment_status') not in ('paid', 'no_payment_required'):
+        return jsonify({'error': 'Checkout session is not complete yet', 'code': 'CHECKOUT_NOT_COMPLETE'}), 409
+
+    try:
+        _handle_checkout_completed(session)
+    except Exception as e:
+        return jsonify({'error': f'Unable to activate subscription: {str(e)}'}), 500
+
+    return jsonify({
+        'success': True,
+        'planType': metadata.get('plan_type'),
+        'sessionId': session_id,
+    })
+
+
 @stripe_bp.route('/create-customer-portal', methods=['POST'])
 @require_auth
 def create_customer_portal():
+    _refresh_stripe_key()
     user = request.current_user
 
     existing_sub = db.query_one(
@@ -168,6 +280,7 @@ def create_customer_portal():
 
 @stripe_bp.route('/webhook', methods=['POST'])
 def stripe_webhook():
+    _refresh_stripe_key()
     payload = request.data
     sig_header = request.headers.get('Stripe-Signature', '')
     webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET', '')

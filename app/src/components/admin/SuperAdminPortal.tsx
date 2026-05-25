@@ -8,7 +8,7 @@
  * - System analytics
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Users, 
   CreditCard, 
@@ -48,9 +48,87 @@ import { cn } from '@/lib/utils';
 import { SEOSettingsTab } from './SEOSettingsTab';
 import { SEOExpansionTab } from './SEOExpansionTab';
 import { AdminRefundDashboard } from '@/components/refunds';
+import { PAID_PLANS } from '@/lib/plans';
+import { fetchAdminSystemStatus, type AdminSystemStatus } from '@/lib/admin/systemStatus';
 
 interface SuperAdminPortalProps {
   onClose: () => void;
+}
+
+function useAdminSystemStatus() {
+  const [status, setStatus] = useState<AdminSystemStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setStatus(await fetchAdminSystemStatus());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load system status');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return { status, isLoading, error, refresh };
+}
+
+function formatCents(amount: number, currency: string) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+  }).format(amount / 100);
+}
+
+function ConfigBadge({ configured, label }: { configured: boolean; label?: string }) {
+  return (
+    <Badge
+      variant="outline"
+      className={configured
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200'
+      }
+    >
+      {configured ? (label || 'Configured') : 'Missing'}
+    </Badge>
+  );
+}
+
+function StatusLoadState({
+  isLoading,
+  error,
+  onRefresh,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+        <RefreshCw className="w-4 h-4 animate-spin" />
+        Loading live configuration...
+      </div>
+    );
+  }
+
+  if (!error) return null;
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="w-4 h-4" />
+        {error}
+      </div>
+      <Button variant="outline" size="sm" onClick={onRefresh}>Retry</Button>
+    </div>
+  );
 }
 
 export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
@@ -358,54 +436,101 @@ function UsersTab() {
 
 // Billing Tab
 function BillingTab() {
-  const [plans] = useState([
-    { id: 'free', name: 'Free', price: 0, features: ['Basic questions', 'PDF downloads'], active: true },
-    { id: 'pro', name: 'Pro', price: 9.99, features: ['All questions', 'Audio mode', 'Progress sync'], active: true },
-    { id: 'couples', name: 'Couples', price: 14.99, features: ['Partner sync', 'Shared progress', 'Priority support'], active: true },
-  ]);
+  const { status, isLoading, error, refresh } = useAdminSystemStatus();
 
   return (
     <div className="space-y-6">
+      <StatusLoadState isLoading={isLoading} error={error} onRefresh={refresh} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Subscription Plans</CardTitle>
-          <CardDescription>Configure pricing and features for each plan</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Subscription Plans</CardTitle>
+              <CardDescription>Live app pricing and Stripe test price wiring.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {plans.map((plan) => (
+            {PAID_PLANS.map((plan) => {
+              const price = status?.stripe.prices[plan.id as keyof AdminSystemStatus['stripe']['prices']];
+              const amount = price ? formatCents(price.expectedAmount, price.currency) : ('price' in plan ? `$${plan.price}` : 'Paid');
+
+              return (
               <div key={plan.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div>
                   <div className="font-medium text-slate-800">{plan.name}</div>
-                  <div className="text-sm text-slate-500">${plan.price}/month</div>
-                  <div className="text-xs text-slate-400 mt-1">{plan.features.join(', ')}</div>
+                  <div className="text-sm text-slate-600">{amount} {price?.mode === 'subscription' ? 'recurring monthly' : 'one-time'}</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    PDFs, partner sync, AI practice, provider/model choice
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Switch checked={plan.active} />
-                  <Button variant="outline" size="sm">Edit</Button>
+                  <ConfigBadge configured={Boolean(price?.configured)} />
+                  <span className="hidden sm:inline text-xs text-slate-500">{price?.envVar}</span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Payment Settings</CardTitle>
+          <CardTitle className="text-base">Stripe Test Mode Status</CardTitle>
+          <CardDescription>Secrets are stored in Coolify environment variables and are never displayed here.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Stripe Public Key</Label>
-              <Input type="password" placeholder="pk_live_..." />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mode</div>
+              <div className="mt-2">
+                <Badge className={status?.stripe.mode === 'test' ? 'bg-blue-600' : 'bg-slate-600'}>
+                  {status?.stripe.mode || 'unknown'}
+                </Badge>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Stripe Secret Key</Label>
-              <Input type="password" placeholder="sk_live_..." />
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secret key</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.secretKeyConfigured)} /></div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publishable key</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.publishableKeyConfigured)} /></div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Webhook</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.webhookConfigured)} /></div>
             </div>
           </div>
-          <Button className="bg-slate-700 hover:bg-slate-800">Save Settings</Button>
+
+          {status?.stripe.autoCreateTestPrices && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              Test-mode price auto-creation is enabled. If explicit price IDs are missing, checkout will create or reuse
+              Stripe test prices with fixed lookup keys for the three paid plans.
+            </div>
+          )}
+
+          <div className={cn(
+            'rounded-lg border p-4 text-sm',
+            status?.stripe.checkoutReady
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800'
+          )}>
+            <div className="font-medium">
+              {status?.stripe.checkoutReady ? 'Checkout is ready.' : 'Checkout needs Stripe test configuration.'}
+            </div>
+            <p className="mt-1">
+              Required env vars: STRIPE_SECRET_KEY plus STRIPE_PRICE_ID_MONTHLY, STRIPE_PRICE_ID_LIFETIME, and STRIPE_PRICE_ID_INTERVIEW_PASS.
+              Webhooks also need STRIPE_WEBHOOK_SECRET to automatically move users from trial to paid after payment.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -690,76 +815,95 @@ function AdsTab() {
 
 // AI Config Tab
 function AIConfigTab() {
+  const { status, isLoading, error, refresh } = useAdminSystemStatus();
+
   return (
     <div className="space-y-6">
+      <StatusLoadState isLoading={isLoading} error={error} onRefresh={refresh} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">AI API Configuration</CardTitle>
-          <CardDescription>Configure AI services for advanced features</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">AI API Configuration</CardTitle>
+              <CardDescription>Live provider status from server environment variables.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <h4 className="font-medium text-slate-700">OpenAI</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>API Key</Label>
-                <Input type="password" placeholder="sk-..." />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {(status?.ai.providers || []).map((provider) => (
+              <div key={provider.provider} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-medium text-slate-800">{provider.label}</h4>
+                    <p className="text-sm text-slate-600 mt-1">{provider.defaultModel}</p>
+                  </div>
+                  <ConfigBadge configured={provider.configured} />
+                </div>
+                <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+                  <span>{provider.modelCount} models available</span>
+                  <span>{provider.configured ? 'Enabled for AI practice' : 'Set API key in Coolify'}</span>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Model</Label>
-                <Input defaultValue="gpt-4" />
+            ))}
+
+            {!isLoading && !status?.ai.providers.length && (
+              <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500 md:col-span-2">
+                Provider status is unavailable.
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch id="openai-enabled" />
-              <Label htmlFor="openai-enabled">Enable OpenAI features</Label>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Default provider</div>
+                <div className="mt-1 font-medium text-slate-800">{status?.ai.defaultProvider || 'Not loaded'}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Default model</div>
+                <div className="mt-1 font-medium text-slate-800">{status?.ai.defaultModel || 'Not loaded'}</div>
+              </div>
             </div>
           </div>
 
           <Separator />
 
           <div className="space-y-4">
-            <h4 className="font-medium text-slate-700">Text-to-Speech</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Provider</Label>
-                <select className="w-full h-10 px-3 rounded-md border border-slate-200">
-                  <option>Browser Native</option>
-                  <option>Google Cloud TTS</option>
-                  <option>Amazon Polly</option>
-                  <option>ElevenLabs</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>API Key (if required)</Label>
-                <Input type="password" placeholder="Optional" />
-              </div>
-            </div>
+            <h4 className="font-medium text-slate-700">How settings are applied</h4>
+            <p className="text-sm text-slate-600">
+              AI keys and model defaults are production secrets, so this portal reports whether they are present.
+              Add or change keys in Coolify environment variables, redeploy, then refresh this page.
+            </p>
           </div>
-
-          <Button className="bg-slate-700 hover:bg-slate-800">Save AI Settings</Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Usage Limits</CardTitle>
+          <CardDescription>Current plan limits used by the entitlement system.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-slate-800">Free Tier Monthly Limit</div>
-                <div className="text-sm text-slate-500">AI requests per month</div>
+                <div className="font-medium text-slate-800">Free Trial</div>
+                <div className="text-sm text-slate-500">5 turns per session, 1 session per day</div>
               </div>
-              <Input type="number" defaultValue={50} className="w-24" />
+              <Badge variant="secondary">Limited</Badge>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-slate-800">Pro Tier Monthly Limit</div>
-                <div className="text-sm text-slate-500">AI requests per month</div>
+                <div className="font-medium text-slate-800">Paid Plans</div>
+                <div className="text-sm text-slate-500">20-50 turns per session depending on plan</div>
               </div>
-              <Input type="number" defaultValue={500} className="w-24" />
+              <Badge className="bg-emerald-600">Premium</Badge>
             </div>
           </div>
         </CardContent>
@@ -770,44 +914,70 @@ function AIConfigTab() {
 
 // System Tab
 function SystemTab() {
+  const { status, isLoading, error, refresh } = useAdminSystemStatus();
+
   return (
     <div className="space-y-6">
+      <StatusLoadState isLoading={isLoading} error={error} onRefresh={refresh} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Email Configuration</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Production Configuration</CardTitle>
+              <CardDescription>Read-only status for the deployed server.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>SMTP Host</Label>
-              <Input placeholder="smtp.example.com" />
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Environment</div>
+              <div className="mt-1 font-medium text-slate-800">{status?.environment || 'Unknown'}</div>
             </div>
-            <div className="space-y-2">
-              <Label>SMTP Port</Label>
-              <Input placeholder="587" />
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Database</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.database.urlConfigured)} /></div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stripe checkout</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.checkoutReady)} /></div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stripe webhook</div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.webhookReady)} /></div>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>From Email</Label>
-            <Input placeholder="noreply@interviewready.com" />
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            <div className="font-medium text-slate-800">Server time</div>
+            <div>{status?.serverTime ? new Date(status.serverTime).toLocaleString() : 'Not loaded'}</div>
+            {status?.frontendUrl && (
+              <>
+                <div className="font-medium text-slate-800 mt-3">Frontend URL</div>
+                <div className="break-all">{status.frontendUrl}</div>
+              </>
+            )}
           </div>
-          <Button className="bg-slate-700 hover:bg-slate-800">Save Email Settings</Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Backup & Export</CardTitle>
+          <CardTitle className="text-base">Operational Notes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <Button variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Backup Database
-            </Button>
-            <Button variant="outline">
-              Export User Data
-            </Button>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            Test-mode payments require matching Stripe test price IDs in Coolify. Once checkout succeeds,
+            the Stripe webhook is what updates the user subscription from trial to paid in the database.
+          </div>
+          <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-600">
+            This app intentionally does not accept secret API keys in the browser admin UI. Store secrets in Coolify,
+            redeploy, then confirm the status here.
           </div>
         </CardContent>
       </Card>

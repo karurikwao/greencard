@@ -124,6 +124,7 @@ export {
 
 export {
   createCheckoutSession,
+  confirmCheckoutSession,
   redirectToCheckout,
   createCustomerPortalSession,
   redirectToCustomerPortal,
@@ -131,6 +132,7 @@ export {
   isCheckoutCanceled,
   getCheckoutSessionId,
   type CheckoutSessionResult,
+  type CheckoutConfirmationResult,
   type PortalSessionResult,
 } from './stripe';
 

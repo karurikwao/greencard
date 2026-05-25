@@ -15,7 +15,12 @@ import {
   FileText, 
   Clock,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Crown,
+  Lock,
+  CheckCircle2,
+  CreditCard,
+  Settings
 } from 'lucide-react';
 import { NotificationPanel } from '@/components/notifications';
 import { SupportTicketPanel } from '@/components/support';
@@ -26,8 +31,10 @@ import { Badge } from '@/components/ui/badge';
 import { useReadiness } from '@/hooks/useReadiness';
 import { usePractice } from '@/lib/practice';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { usePricing } from '@/hooks/usePricing';
 import { normalizeAllTopics } from '@/lib/practice/normalize';
 import type { PracticeTopic } from '@/lib/practice/types';
+import { getPlanDisplayName, type PlanType } from '@/lib/plans';
 import { topics } from '@/data/topics';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +46,9 @@ interface DashboardProps {
   onViewProgress: () => void;
   onViewTimeline: () => void;
   onViewCouplePractice: () => void;
+  onUpgrade: () => void;
+  onViewAdmin?: () => void;
+  canViewAdmin?: boolean;
 }
 
 export function Dashboard({
@@ -49,9 +59,21 @@ export function Dashboard({
   onViewProgress,
   onViewTimeline,
   onViewCouplePractice,
+  onUpgrade,
+  onViewAdmin,
+  canViewAdmin = false,
 }: DashboardProps) {
   const { result: readinessResult } = useReadiness();
   const { getComfortStatus } = usePractice();
+  const {
+    entitlements,
+    featureAccess,
+    currentPlan,
+    trialDaysLeft,
+    passDaysLeft,
+    hasPremium,
+    isLoadingServer,
+  } = usePricing();
   const [lastTopic] = useLocalStorage<string | null>('interview-last-topic', null);
   const [milestones] = useLocalStorage('interview-timeline-v2', []);
   
@@ -132,14 +154,37 @@ export function Dashboard({
     return Math.round((filled / milestones.length) * 100);
   }, [milestones]);
 
+  const currentPlanType = (entitlements?.subscription.planType || currentPlan.id) as PlanType;
+  const planName = getPlanDisplayName(currentPlanType);
+  const planStatusLabel = entitlements?.subscription.effectiveStatus?.replace('_', ' ') || 'trialing';
+  const daysRemaining = currentPlanType === 'trial'
+    ? trialDaysLeft
+    : currentPlanType === 'interviewPass'
+    ? passDaysLeft
+    : entitlements?.subscription.daysRemaining;
+  const featureTiles = [
+    { label: 'Premium PDFs', enabled: featureAccess.pdfDownloads },
+    { label: 'Partner sync', enabled: featureAccess.coupleCompare },
+    { label: 'AI interview coach', enabled: featureAccess.mockInterview },
+    { label: 'Provider/model choice', enabled: hasPremium },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
       {/* Header */}
       <header className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <LayoutDashboard className="w-6 h-6 text-slate-500" />
-            <h1 className="text-xl font-medium text-slate-800">Your Dashboard</h1>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <LayoutDashboard className="w-6 h-6 text-slate-600" />
+              <h1 className="text-xl font-semibold text-slate-900">Your Dashboard</h1>
+            </div>
+            {canViewAdmin && onViewAdmin && (
+              <Button variant="outline" size="sm" onClick={onViewAdmin}>
+                <Settings className="w-4 h-4 mr-2" />
+                Admin
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -176,6 +221,84 @@ export function Dashboard({
                   Take Readiness Check
                 </Button>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Subscription + Premium Access */}
+        <Card className="border-slate-200/80 bg-white">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-900">
+                  {hasPremium ? (
+                    <Crown className="w-4 h-4 text-amber-500" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-slate-500" />
+                  )}
+                  Plan & Premium Access
+                </CardTitle>
+                <p className="text-sm text-slate-600 mt-1">
+                  Trial access upgrades to paid access through Stripe Checkout.
+                </p>
+              </div>
+              <Badge variant={hasPremium ? 'default' : 'secondary'} className="w-fit capitalize">
+                {isLoadingServer ? 'Checking...' : planStatusLabel}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</p>
+                <p className="mt-1 font-semibold text-slate-900">{planName}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Access window</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {hasPremium && currentPlanType === 'lifetime'
+                    ? 'Lifetime'
+                    : daysRemaining != null
+                    ? `${Math.max(0, daysRemaining)} days left`
+                    : 'Active'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment path</p>
+                <p className="mt-1 font-semibold text-slate-900">{hasPremium ? 'Paid account' : 'Trial to paid'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {featureTiles.map((feature) => (
+                <div
+                  key={feature.label}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                    feature.enabled
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-slate-50 text-slate-600'
+                  )}
+                >
+                  {feature.enabled ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-slate-400" />
+                  )}
+                  <span>{feature.label}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button onClick={onUpgrade} className="bg-slate-800 hover:bg-slate-900">
+                <CreditCard className="w-4 h-4 mr-2" />
+                {hasPremium ? 'View Billing Options' : 'Upgrade for Premium'}
+              </Button>
+              <Button variant="outline" onClick={onViewCouplePractice}>
+                <Users className="w-4 h-4 mr-2" />
+                Open Partner Sync
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -315,6 +438,9 @@ export function Dashboard({
               <p className="text-slate-600 mb-4">
                 Invite your spouse to study together and compare answers
               </p>
+              {!featureAccess.coupleCompare && (
+                <Badge variant="secondary" className="mb-3">Premium</Badge>
+              )}
               <Button variant="outline" size="sm" onClick={onViewCouplePractice} className="w-full">
                 Invite Partner
               </Button>
