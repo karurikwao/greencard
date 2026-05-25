@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { HelpCircle, Plus, MessageSquare, Clock, CheckCircle, Send } from 'lucide-react';
+import { AlertCircle, Bot, HelpCircle, Plus, MessageSquare, Clock, CheckCircle, Send, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,8 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { SupportTicket, TicketCategory, TicketStatus } from '@/lib/notifications';
 import { TICKET_CATEGORIES, TICKET_STATUS_LABELS } from '@/lib/notifications';
-import { getUserTickets, createSupportTicket } from '@/lib/notifications/api';
+import { getUserTickets, createSupportTicket, supportAiAssist } from '@/lib/notifications/api';
+import type { SupportAiAssistResponse } from '@/lib/notifications';
 
 
 interface SupportTicketPanelProps {
@@ -47,6 +48,9 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
     message: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAiAssisting, setIsAiAssisting] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiAssist, setAiAssist] = useState<SupportAiAssistResponse | null>(null);
 
 
   useEffect(() => {
@@ -72,14 +76,60 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
       subject: newTicket.subject,
       category: newTicket.category,
       message: newTicket.message,
+      aiSummary: aiAssist?.summary,
+      aiSuggestedReply: aiAssist?.reply,
+      aiTriage: aiAssist ? {
+        urgency: aiAssist.urgency,
+        provider: aiAssist.provider,
+        recommendedCategory: aiAssist.recommendedCategory,
+        fallback: aiAssist.fallback || false,
+      } : undefined,
     });
 
     if (result.success) {
       setNewTicket({ subject: '', category: '', message: '' });
+      setAiAssist(null);
+      setAiError(null);
       setIsCreateDialogOpen(false);
       loadTickets();
     }
     setIsSubmitting(false);
+  };
+
+  const handleAiAssist = async () => {
+    if (!newTicket.subject.trim() && !newTicket.message.trim()) {
+      setAiError('Add a subject or message first.');
+      return;
+    }
+
+    setIsAiAssisting(true);
+    setAiError(null);
+    const result = await supportAiAssist({
+      subject: newTicket.subject,
+      category: newTicket.category || 'other',
+      message: newTicket.message,
+    });
+
+    if (result.success && result.data) {
+      setAiAssist(result.data);
+      if (!newTicket.subject.trim() && result.data.suggestedTicketSubject) {
+        setNewTicket(prev => ({ ...prev, subject: result.data!.suggestedTicketSubject }));
+      }
+      if (!newTicket.category && result.data.recommendedCategory) {
+        setNewTicket(prev => ({ ...prev, category: result.data!.recommendedCategory }));
+      }
+    } else {
+      setAiError(result.error || 'AI support is temporarily unavailable.');
+    }
+    setIsAiAssisting(false);
+  };
+
+  const appendAiContext = () => {
+    if (!aiAssist?.reply) return;
+    setNewTicket(prev => ({
+      ...prev,
+      message: `${prev.message.trim()}\n\nAI support notes:\n${aiAssist.reply}`.trim(),
+    }));
   };
 
   if (isLoading) {
@@ -105,7 +155,13 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
             </Badge>
           )}
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+          setIsCreateDialogOpen(open);
+          if (!open) {
+            setAiAssist(null);
+            setAiError(null);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="w-4 h-4 mr-1" />
@@ -156,6 +212,47 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   value={newTicket.message}
                   onChange={(e) => setNewTicket(prev => ({ ...prev, message: e.target.value }))}
                 />
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-4 h-4 text-slate-600" />
+                    <span className="text-sm font-medium text-slate-800">AI support assistant</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiAssist}
+                    disabled={isAiAssisting}
+                  >
+                    {isAiAssisting ? (
+                      <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin mr-2" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    Get help
+                  </Button>
+                </div>
+                {aiError && (
+                  <div className="flex gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{aiError}</span>
+                  </div>
+                )}
+                {aiAssist && (
+                  <div className="space-y-3 rounded-md border border-blue-100 bg-white px-3 py-3">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{aiAssist.reply}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className="capitalize">
+                        {aiAssist.urgency} priority
+                      </Badge>
+                      <Button type="button" variant="ghost" size="sm" onClick={appendAiContext}>
+                        Add to ticket
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>
@@ -239,7 +336,7 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   <div>
                     <DialogTitle className="text-lg">{selectedTicket.subject}</DialogTitle>
                     <DialogDescription className="mt-1">
-                      Ticket #{selectedTicket.id.slice(0, 8)} • {TICKET_CATEGORIES.find(c => c.value === selectedTicket.category)?.label}
+                      Ticket #{selectedTicket.id.slice(0, 8)} - {TICKET_CATEGORIES.find(c => c.value === selectedTicket.category)?.label}
                     </DialogDescription>
                   </div>
                   <Badge variant="outline" className={statusColors[selectedTicket.status]}>

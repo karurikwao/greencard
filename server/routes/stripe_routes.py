@@ -30,15 +30,60 @@ PLAN_LABELS = {
     'interviewPass': 'InterviewReady 90-Day Interview Pass',
 }
 
+PLAN_CHECKOUT_DETAILS = {
+    'monthly': {
+        'summary': 'Recurring premium access for spouse green card interview preparation.',
+        'terms': '$19.99 today, then $19.99 each month until canceled. Cancel anytime from your dashboard; access continues through the paid billing period.',
+    },
+    'lifetime': {
+        'summary': 'One-time lifetime access to premium spouse green card interview preparation features.',
+        'terms': '$79.99 one-time payment for lifetime access. No renewal is created.',
+    },
+    'interviewPass': {
+        'summary': 'One-time 90-day access pass for interview preparation.',
+        'terms': '$39.99 one-time payment for 90 days of premium access. No renewal is created.',
+    },
+}
+
+REFUND_POLICY_SUMMARY = (
+    'Refund requests are reviewed under the refund policy. Unauthorized or unclear purchase claims '
+    'are prioritized for manual review.'
+)
+
 
 def _is_stripe_subscription_id(value):
     return bool(value and str(value).startswith('sub_'))
+
+
+def _is_stripe_payment_intent_id(value):
+    return bool(value and str(value).startswith('pi_'))
 
 
 def _iso_from_timestamp(timestamp):
     if not timestamp:
         return None
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def _datetime_from_timestamp(timestamp):
+    if not timestamp:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+
+
+def _coerce_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo:
+            return value
+        return value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+    return None
 
 
 def _as_iso(value):
@@ -75,6 +120,45 @@ def _metadata_json(updates):
     return json.dumps({k: v for k, v in updates.items() if v is not None})
 
 
+def _stripe_object_id(value):
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get('id')
+    return getattr(value, 'id', None)
+
+
+def _checkout_metadata(user_id, plan_type, extra=None):
+    details = PLAN_CHECKOUT_DETAILS[plan_type]
+    metadata = {
+        'user_id': user_id,
+        'plan_type': plan_type,
+        'plan_label': PLAN_LABELS[plan_type],
+        'purchase_summary': details['summary'],
+        'purchase_terms': details['terms'],
+        'refund_policy': REFUND_POLICY_SUMMARY,
+        'terms_version': '2026-05-25',
+        'app_source': 'interview_ready',
+    }
+    if extra:
+        metadata.update(extra)
+    return metadata
+
+
+def _checkout_custom_text(plan_type):
+    details = PLAN_CHECKOUT_DETAILS[plan_type]
+    return {
+        'submit': {
+            'message': f"{details['terms']} {REFUND_POLICY_SUMMARY}",
+        },
+        'after_submit': {
+            'message': 'A receipt and purchase confirmation will be sent by email after payment is complete.',
+        },
+    }
+
+
 def _subscription_event_matches_current(sub, incoming_subscription_id):
     if not sub or not incoming_subscription_id:
         return False
@@ -101,6 +185,7 @@ def _get_or_create_test_price(plan_type):
 
     product = stripe.Product.create(
         name=PLAN_LABELS[plan_type],
+        description=PLAN_CHECKOUT_DETAILS[plan_type]['summary'],
         metadata={
             'app_source': 'interview_ready',
             'plan_type': plan_type,
@@ -239,12 +324,17 @@ def create_checkout_session():
         'cancel_url': cancel_url or default_cancel,
         'line_items': [{'price': price_id, 'quantity': 1}],
         'client_reference_id': user['id'],
-        'metadata': {
-            'user_id': user['id'],
-            'plan_type': plan_type,
-            'app_source': 'interview_ready',
-        }
+        'metadata': _checkout_metadata(user['id'], plan_type),
+        'custom_text': _checkout_custom_text(plan_type),
     }
+
+    if os.getenv('STRIPE_REQUIRE_TOS_CONSENT', '').lower() in ('1', 'true', 'yes'):
+        session_params['consent_collection'] = {'terms_of_service': 'required'}
+        session_params['custom_text']['terms_of_service_acceptance'] = {
+            'message': (
+                'I agree to the Terms of Service and Refund Policy for this InterviewReady purchase.'
+            )
+        }
 
     if (
         plan_type == 'lifetime'
@@ -261,12 +351,15 @@ def create_checkout_session():
         session_params['metadata']['influencer_name'] = promo_validation.get('influencer_name', '')
 
     if not is_subscription:
+        payment_metadata = _checkout_metadata(user['id'], plan_type)
         session_params['payment_intent_data'] = {
-            'metadata': {
-                'user_id': user['id'],
-                'plan_type': plan_type,
-                'app_source': 'interview_ready',
-            }
+            'description': f"{PLAN_LABELS[plan_type]} - {PLAN_CHECKOUT_DETAILS[plan_type]['terms']}",
+            'metadata': payment_metadata,
+        }
+    else:
+        session_params['subscription_data'] = {
+            'description': f"{PLAN_LABELS[plan_type]} - {PLAN_CHECKOUT_DETAILS[plan_type]['terms']}",
+            'metadata': _checkout_metadata(user['id'], plan_type),
         }
 
     try:
@@ -455,6 +548,228 @@ def resume_subscription():
         'status': 'active',
         'cancelAtPeriodEnd': False,
         'currentPeriodEndsAt': period_end,
+    })
+
+
+def _usage_counts_for_refund(user_id):
+    questions_completed = 0
+    mock_interviews_completed = 0
+    try:
+        progress = db.query_one(
+            """
+            SELECT
+                COALESCE((SELECT questions_practiced FROM user_progress WHERE user_id = %s), 0)
+                + COALESCE((
+                    SELECT COUNT(*) FROM question_states
+                    WHERE user_id = %s
+                    AND COALESCE(comfort_status, 'not-seen') <> 'not-seen'
+                ), 0) AS questions_completed
+            """,
+            (user_id, user_id),
+        )
+        questions_completed = int(progress.get('questions_completed') or 0) if progress else 0
+    except Exception:
+        questions_completed = 0
+
+    try:
+        sessions = db.query_one(
+            """
+            SELECT COUNT(*) AS mock_interviews_completed
+            FROM ai_session_tracking
+            WHERE user_id = %s AND COALESCE(turns_count, 0) >= 5
+            """,
+            (user_id,),
+        )
+        mock_interviews_completed = int(sessions.get('mock_interviews_completed') or 0) if sessions else 0
+    except Exception:
+        mock_interviews_completed = 0
+
+    return questions_completed, mock_interviews_completed
+
+
+def _payment_reference_for_refund(subscription_row):
+    provider_ref = subscription_row.get('provider_subscription_id')
+    plan_type = subscription_row.get('plan_type')
+    amount_cents = PLAN_PRICES.get(plan_type, 0)
+    purchased_at = _coerce_datetime(subscription_row.get('created_at'))
+    currency = 'usd'
+    payment_intent_id = None
+    charge_id = None
+    subscription_id = provider_ref if _is_stripe_subscription_id(provider_ref) else None
+
+    if _is_stripe_payment_intent_id(provider_ref):
+        payment_intent = stripe.PaymentIntent.retrieve(provider_ref, expand=['latest_charge'])
+        payment_intent_id = payment_intent.id
+        amount_cents = payment_intent.get('amount_received') or payment_intent.get('amount') or amount_cents
+        currency = payment_intent.get('currency') or currency
+        purchased_at = _datetime_from_timestamp(payment_intent.get('created')) or purchased_at
+        charge_id = _stripe_object_id(payment_intent.get('latest_charge'))
+    elif _is_stripe_subscription_id(provider_ref):
+        subscription = stripe.Subscription.retrieve(
+            provider_ref,
+            expand=['latest_invoice.payment_intent', 'latest_invoice.charge'],
+        )
+        subscription_id = subscription.id
+        invoice = subscription.get('latest_invoice')
+        if isinstance(invoice, str):
+            invoice = stripe.Invoice.retrieve(invoice, expand=['payment_intent', 'charge'])
+
+        if invoice:
+            amount_cents = invoice.get('amount_paid') or invoice.get('total') or amount_cents
+            currency = invoice.get('currency') or currency
+            purchased_at = _datetime_from_timestamp(invoice.get('created')) or purchased_at
+
+            payment_intent = invoice.get('payment_intent')
+            payment_intent_id = _stripe_object_id(payment_intent)
+            if payment_intent and not isinstance(payment_intent, str):
+                amount_cents = payment_intent.get('amount_received') or amount_cents
+                purchased_at = _datetime_from_timestamp(payment_intent.get('created')) or purchased_at
+                charge_id = _stripe_object_id(payment_intent.get('latest_charge')) or charge_id
+
+            charge_id = _stripe_object_id(invoice.get('charge')) or charge_id
+
+    amount = round((amount_cents or 0) / 100, 2)
+    return {
+        'subscription_id': subscription_id,
+        'payment_intent_id': payment_intent_id,
+        'charge_id': charge_id,
+        'amount': amount,
+        'currency': currency,
+        'purchased_at': purchased_at,
+    }
+
+
+def _refund_eligibility_status(reason, days_since_purchase, questions_completed, mock_interviews_completed):
+    if reason == 'unauthorized_transaction':
+        return 'eligible', 'Unauthorized transaction claim queued for priority manual review.'
+    if (
+        days_since_purchase <= 7
+        and questions_completed < 25
+        and mock_interviews_completed <= 1
+    ):
+        return 'eligible', 'Within the 7-day refund window and usage limits.'
+    if (
+        reason == 'unclear_purchase'
+        and days_since_purchase <= 14
+        and questions_completed < 25
+        and mock_interviews_completed <= 1
+    ):
+        return 'eligible', 'Unclear purchase claim queued for manual review.'
+    return 'not_eligible', 'Outside the standard refund window or usage limits; support can still review the details.'
+
+
+@stripe_bp.route('/request-refund', methods=['POST'])
+@require_auth
+def request_refund():
+    _refresh_stripe_key()
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    user = request.current_user
+    data = request.get_json() or {}
+    reason = (data.get('reason') or 'other').strip()
+    additional_comments = (data.get('additionalComments') or '').strip()[:2000]
+
+    sub = db.query_one(
+        """SELECT id, user_id, plan_type, status, provider, provider_customer_id,
+                  provider_subscription_id, created_at
+           FROM user_subscriptions WHERE user_id = %s""",
+        (user['id'],),
+    )
+    if not sub or sub.get('plan_type') == 'trial':
+        return jsonify({'error': 'No paid Stripe purchase found for this account.', 'code': 'NO_PAID_PURCHASE'}), 404
+    if sub.get('provider') != 'stripe':
+        return jsonify({'error': 'Refund requests can only be automated for Stripe purchases.', 'code': 'NOT_STRIPE'}), 400
+
+    try:
+        reference = _payment_reference_for_refund(sub)
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Unable to look up the Stripe payment: {str(e)}', 'code': 'STRIPE_LOOKUP_FAILED'}), 502
+
+    if not reference.get('payment_intent_id') and not reference.get('charge_id'):
+        return jsonify({'error': 'No refundable Stripe charge was found for this purchase.', 'code': 'PAYMENT_REFERENCE_NOT_FOUND'}), 400
+
+    purchased_at = reference.get('purchased_at') or datetime.now(timezone.utc)
+    days_since_purchase = max(0, (datetime.now(timezone.utc) - purchased_at).days)
+    questions_completed, mock_interviews_completed = _usage_counts_for_refund(user['id'])
+    eligibility_status, eligibility_note = _refund_eligibility_status(
+        reason,
+        days_since_purchase,
+        questions_completed,
+        mock_interviews_completed,
+    )
+
+    duplicate = db.query_one(
+        """
+        SELECT * FROM refund_requests
+        WHERE user_id = %s
+          AND COALESCE(stripe_payment_intent_id, '') = COALESCE(%s, '')
+          AND COALESCE(stripe_charge_id, '') = COALESCE(%s, '')
+          AND eligibility_status IN ('pending', 'eligible', 'not_eligible', 'approved')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (user['id'], reference.get('payment_intent_id'), reference.get('charge_id')),
+    )
+    if duplicate:
+        return jsonify({
+            'success': True,
+            'refundRequestId': str(duplicate['id']),
+            'eligibilityStatus': duplicate['eligibility_status'],
+            'message': 'A refund request for this payment is already on file.',
+        })
+
+    request_row = db.execute_returning(
+        """
+        INSERT INTO refund_requests (
+            user_id, subscription_id, stripe_payment_intent_id, stripe_charge_id,
+            plan_type, amount, currency, purchased_at, days_since_purchase,
+            questions_completed, mock_interviews_completed, eligibility_status,
+            reason, additional_comments
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING *
+        """,
+        (
+            user['id'],
+            reference.get('subscription_id'),
+            reference.get('payment_intent_id'),
+            reference.get('charge_id'),
+            sub.get('plan_type'),
+            reference.get('amount'),
+            reference.get('currency'),
+            purchased_at,
+            days_since_purchase,
+            questions_completed,
+            mock_interviews_completed,
+            eligibility_status,
+            reason,
+            additional_comments or eligibility_note,
+        ),
+    )
+
+    try:
+        db.call_function('create_user_notification', (
+            user['id'], 'refund', 'Refund Request Submitted',
+            f"Your refund request is marked {eligibility_status.replace('_', ' ')} for review.",
+            None,
+            json.dumps({
+                'refund_id': str(request_row['id']),
+                'reason': reason,
+                'amount': float(reference.get('amount') or 0),
+                'eligibility_note': eligibility_note,
+            }),
+        ))
+    except Exception:
+        pass
+
+    return jsonify({
+        'success': True,
+        'refundRequestId': str(request_row['id']),
+        'eligibilityStatus': eligibility_status,
+        'amount': reference.get('amount'),
+        'daysSincePurchase': days_since_purchase,
+        'message': eligibility_note,
     })
 
 

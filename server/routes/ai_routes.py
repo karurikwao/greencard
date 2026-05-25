@@ -3,7 +3,7 @@ import json
 import uuid
 import requests as http_requests
 from flask import Blueprint, request, jsonify
-from auth import optional_auth
+from auth import optional_auth, require_auth
 import db
 
 ai_bp = Blueprint('ai', __name__)
@@ -84,6 +84,45 @@ def ai_interview_turn():
     })
 
 
+@ai_bp.route('/support-assist', methods=['POST'])
+@require_auth
+def support_assist():
+    data = request.get_json() or {}
+    category = (data.get('category') or 'other')[:40]
+    subject = (data.get('subject') or '')[:200]
+    message = (data.get('message') or '')[:4000]
+
+    if not subject and not message:
+        return jsonify({'error': 'Tell the assistant what you need help with first.'}), 400
+
+    provider = data.get('provider') or (
+        'nvidia' if NVIDIA_API_KEY else
+        'openai' if OPENAI_API_KEY else
+        'deepseek' if DEEPSEEK_API_KEY else
+        'anthropic' if ANTHROPIC_API_KEY else
+        'fallback'
+    )
+    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    messages = _build_support_messages(category, subject, message)
+
+    try:
+        if provider == 'anthropic':
+            response_text = _call_anthropic(model, messages)
+        elif provider == 'deepseek':
+            response_text = _call_deepseek(model, messages)
+        elif provider == 'nvidia':
+            response_text = _call_nvidia(model, messages)
+        elif provider == 'openai':
+            response_text = _call_openai(model, messages)
+        else:
+            raise ValueError('No AI provider configured')
+        normalized = _normalize_support_response(response_text, provider, model, category)
+    except Exception as e:
+        normalized = _support_fallback_response(category, subject, message, str(e))
+
+    return jsonify({'success': True, 'data': normalized})
+
+
 def _default_model_for_provider(provider):
     return {
         'openai': 'gpt-5-mini',
@@ -91,6 +130,100 @@ def _default_model_for_provider(provider):
         'deepseek': 'deepseek-chat',
         'nvidia': 'meta/llama-3.1-8b-instruct',
     }.get(provider, 'gpt-5-mini')
+
+
+def _build_support_messages(category, subject, message):
+    system_prompt = (
+        "You are InterviewReady support assistant. Help users with billing, refunds, account access, "
+        "technical problems, and app usage. Be factual, calm, and concise. Do not give legal advice. "
+        "For unauthorized-transaction or unclear-purchase claims, tell the user to submit a refund "
+        "request from the dashboard and to describe only accurate facts. Return only valid JSON with "
+        "keys: reply, summary, suggestedTicketSubject, recommendedCategory, shouldCreateTicket, urgency."
+    )
+    user_prompt = f"""
+Category: {category}
+Subject: {subject or '(not provided)'}
+User message:
+{message or '(not provided)'}
+
+Write a helpful support response and a short internal summary. recommendedCategory must be one of
+billing, refund, technical, account, feature_request, other. urgency must be low, normal, or high.
+"""
+    return [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': user_prompt},
+    ]
+
+
+def _normalize_support_response(response_text, provider, model, category):
+    try:
+        cleaned = response_text.strip()
+        if cleaned.startswith('```'):
+            cleaned = cleaned.strip('`')
+            cleaned = cleaned.replace('json\n', '', 1).replace('json\r\n', '', 1)
+        parsed = json.loads(cleaned)
+    except Exception:
+        parsed = {}
+
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    reply = parsed.get('reply') or response_text.strip()
+    if not reply:
+        reply = _support_fallback_copy(category)
+
+    recommended_category = parsed.get('recommendedCategory') or category or 'other'
+    if recommended_category not in {'billing', 'refund', 'technical', 'account', 'feature_request', 'other'}:
+        recommended_category = 'other'
+
+    urgency = parsed.get('urgency') or 'normal'
+    if urgency not in {'low', 'normal', 'high'}:
+        urgency = 'normal'
+
+    return {
+        'reply': reply[:1800],
+        'summary': (parsed.get('summary') or reply[:240])[:500],
+        'suggestedTicketSubject': (parsed.get('suggestedTicketSubject') or 'Support request')[:120],
+        'recommendedCategory': recommended_category,
+        'shouldCreateTicket': bool(parsed.get('shouldCreateTicket', True)),
+        'urgency': urgency,
+        'provider': provider,
+        'model': model,
+        'fallback': False,
+    }
+
+
+def _support_fallback_copy(category):
+    if category == 'refund':
+        return (
+            "I can help you start a refund review. Please submit the request from your dashboard, "
+            "choose the reason that matches the facts, and include any charge date or receipt details you have."
+        )
+    if category == 'billing':
+        return (
+            "Please include what you were trying to buy, the email on the account, and any Stripe receipt "
+            "or checkout message you saw. Support can then verify the payment and next step."
+        )
+    return (
+        "Please share the page you were on, what you expected to happen, and what happened instead. "
+        "Support can review it with that context."
+    )
+
+
+def _support_fallback_response(category, subject, message, error_message):
+    reply = _support_fallback_copy(category)
+    return {
+        'reply': reply,
+        'summary': f"{subject or category}: {(message or '')[:220]}",
+        'suggestedTicketSubject': subject or 'Support request',
+        'recommendedCategory': category if category in {'billing', 'refund', 'technical', 'account', 'feature_request', 'other'} else 'other',
+        'shouldCreateTicket': True,
+        'urgency': 'high' if category == 'refund' else 'normal',
+        'provider': 'fallback',
+        'model': None,
+        'fallback': True,
+        'error': error_message[:240],
+    }
 
 
 def _check_usage_limits(user):

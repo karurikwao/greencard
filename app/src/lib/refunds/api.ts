@@ -8,8 +8,19 @@ import type {
 RefundRequest,
 RefundRequestInput,
 RefundEligibility,
-AdminRefundRequest
+AdminRefundRequest,
+RefundReason
 } from './types';
+
+export interface BillingRefundRequestResult {
+success: boolean;
+refundRequestId?: string;
+eligibilityStatus?: RefundRequest['eligibilityStatus'];
+amount?: number;
+daysSincePurchase?: number;
+message?: string;
+error?: string;
+}
 
 /**
 * Create a new refund request
@@ -53,6 +64,33 @@ return { success: false, error: fetchError.message };
 return { success: true, data: refundData as RefundRequest };
 } catch (err) {
 console.error('Error creating refund request:', err);
+return {
+success: false,
+error: err instanceof Error ? err.message : 'Unknown error'
+};
+}
+}
+
+/**
+* Create a refund request from the active Stripe billing record.
+*/
+export async function createBillingRefundRequest(input: {
+reason: RefundReason | string;
+additionalComments?: string;
+}): Promise<BillingRefundRequestResult> {
+try {
+const { data, error } = await apiClient.invokeFunction<BillingRefundRequestResult>('request-refund', {
+reason: input.reason,
+additionalComments: input.additionalComments || '',
+});
+
+if (error) {
+return { success: false, error: error.message };
+}
+
+return data || { success: true, message: 'Refund request submitted.' };
+} catch (err) {
+console.error('Error requesting billing refund:', err);
 return {
 success: false,
 error: err instanceof Error ? err.message : 'Unknown error'

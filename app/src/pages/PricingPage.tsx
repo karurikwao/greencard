@@ -608,8 +608,8 @@ export function PricingPage({
           {/* Money Back Guarantee */}
           <div className="mt-12 text-center">
             <p className="text-sm text-slate-500">
-              <strong>30-Day Money Back Guarantee:</strong> Not satisfied? 
-              Contact us within 30 days for a full refund, no questions asked.
+              <strong>Refund review:</strong> Requests are reviewed under the refund policy.
+              Unauthorized or unclear purchase claims are prioritized for manual review.
             </p>
           </div>
         </div>

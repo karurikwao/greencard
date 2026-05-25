@@ -29,7 +29,7 @@ export async function processRefundViaEdgeFunction(
       };
     }
 
-    const { data, error } = await apiClient.rpc('process-refund', {
+    const { data, error } = await apiClient.invokeFunction<RefundResponse>('process-refund', {
       refundRequestId,
       adminNotes,
     });
@@ -37,7 +37,7 @@ export async function processRefundViaEdgeFunction(
     if (error) {
       return {
         success: false,
-        message: (data as Record<string, unknown>)?.message as string || error.message || 'Refund processing failed',
+        message: data?.message || error.message || 'Refund processing failed',
         error: error.message,
       };
     }

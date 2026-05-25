@@ -94,7 +94,7 @@ export function RefundPolicy({ onBack }: RefundPolicyProps) {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-4">
               <p className="text-sm text-amber-800">
                 <strong>Note:</strong> Refund eligibility is automatically calculated based on your account activity. 
-                If you don't meet these criteria, your refund request may be denied.
+                Unauthorized transaction and unclear purchase claims are prioritized for manual review, and we may ask for receipt or charge details.
               </p>
             </div>
           </CardContent>
@@ -148,13 +148,13 @@ export function RefundPolicy({ onBack }: RefundPolicyProps) {
               <li className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600 text-sm font-medium">1</span>
                 <p className="text-slate-600">
-                  Go to your <strong>Account Dashboard</strong> and click on "Request Refund"
+                  Go to your <strong>Account Dashboard</strong> and click "Request refund review"
                 </p>
               </li>
               <li className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600 text-sm font-medium">2</span>
                 <p className="text-slate-600">
-                  Review the refund eligibility information and click "Continue to Refund Request"
+                  Choose the reason that matches the facts of your purchase
                 </p>
               </li>
               <li className="flex items-start gap-3">
@@ -188,7 +188,7 @@ export function RefundPolicy({ onBack }: RefundPolicyProps) {
 
         {/* Last Updated */}
         <p className="text-center text-sm text-slate-500 mt-8">
-          Last updated: March 2024
+          Last updated: May 25, 2026
         </p>
       </main>
     </div>

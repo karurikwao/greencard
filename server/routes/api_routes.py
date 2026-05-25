@@ -143,24 +143,31 @@ def call_rpc(func_name):
         'get_unread_notification_count': {},
         'create_support_ticket': {
             'p_user_id': lambda: user['id'],
-            'p_subject': lambda: data.get('subject'),
-            'p_category': lambda: data.get('category', 'other'),
-            'p_message': lambda: data.get('message'),
+            'p_subject': lambda: data.get('p_subject') or data.get('subject'),
+            'p_category': lambda: data.get('p_category') or data.get('category', 'other'),
+            'p_message': lambda: data.get('p_message') or data.get('message'),
+            'p_ai_summary': lambda: data.get('p_ai_summary') or data.get('aiSummary'),
+            'p_ai_suggested_reply': lambda: data.get('p_ai_suggested_reply') or data.get('aiSuggestedReply'),
+            'p_ai_triage': lambda: (
+                json.dumps(data.get('p_ai_triage') or data.get('aiTriage') or {})
+                if isinstance(data.get('p_ai_triage') or data.get('aiTriage'), dict)
+                else (data.get('p_ai_triage') or data.get('aiTriage') or '{}')
+            ),
         },
         'create_refund_request': {
             'p_user_id': lambda: user['id'],
-            'p_subscription_id': lambda: data.get('subscriptionId'),
-            'p_stripe_payment_intent_id': lambda: data.get('stripePaymentIntentId'),
-            'p_stripe_charge_id': lambda: data.get('stripeChargeId'),
-            'p_plan_type': lambda: data.get('planType'),
-            'p_amount': lambda: data.get('amount'),
-            'p_currency': lambda: data.get('currency', 'usd'),
-            'p_purchased_at': lambda: data.get('purchasedAt'),
-            'p_days_since_purchase': lambda: data.get('daysSincePurchase', 0),
-            'p_questions_completed': lambda: data.get('questionsCompleted', 0),
-            'p_mock_interviews_completed': lambda: data.get('mockInterviewsCompleted', 0),
-            'p_reason': lambda: data.get('reason'),
-            'p_additional_comments': lambda: data.get('additionalComments'),
+            'p_subscription_id': lambda: data.get('p_subscription_id') or data.get('subscriptionId'),
+            'p_stripe_payment_intent_id': lambda: data.get('p_stripe_payment_intent_id') or data.get('stripePaymentIntentId'),
+            'p_stripe_charge_id': lambda: data.get('p_stripe_charge_id') or data.get('stripeChargeId'),
+            'p_plan_type': lambda: data.get('p_plan_type') or data.get('planType'),
+            'p_amount': lambda: data.get('p_amount') or data.get('amount'),
+            'p_currency': lambda: data.get('p_currency') or data.get('currency', 'usd'),
+            'p_purchased_at': lambda: data.get('p_purchased_at') or data.get('purchasedAt'),
+            'p_days_since_purchase': lambda: data.get('p_days_since_purchase') or data.get('daysSincePurchase', 0),
+            'p_questions_completed': lambda: data.get('p_questions_completed') or data.get('questionsCompleted', 0),
+            'p_mock_interviews_completed': lambda: data.get('p_mock_interviews_completed') or data.get('mockInterviewsCompleted', 0),
+            'p_reason': lambda: data.get('p_reason') or data.get('reason'),
+            'p_additional_comments': lambda: data.get('p_additional_comments') or data.get('additionalComments'),
         },
         'validate_promo_code': {'p_code': lambda: data.get('code')},
         'record_referral_event': {
@@ -758,14 +765,30 @@ def process_refund():
     if refund_request['eligibility_status'] not in ('eligible', 'approved'):
         return jsonify({'error': 'Not eligible'}), 400
 
-    if not refund_request.get('stripe_payment_intent_id'):
-        return jsonify({'error': 'No payment intent found'}), 400
+    if not refund_request.get('stripe_payment_intent_id') and not refund_request.get('stripe_charge_id'):
+        return jsonify({'error': 'No refundable Stripe payment reference found'}), 400
 
     stripe.api_key = os.getenv('STRIPE_SECRET_KEY', '')
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured'}), 503
+
+    refund_params = {
+        'reason': 'requested_by_customer',
+        'metadata': {
+            'refund_request_id': str(refund_request_id),
+            'processed_by': str(user['id']),
+            'customer_reason': refund_request.get('reason') or '',
+        },
+    }
+    if refund_request.get('stripe_payment_intent_id'):
+        refund_params['payment_intent'] = refund_request['stripe_payment_intent_id']
+    else:
+        refund_params['charge'] = refund_request['stripe_charge_id']
+
     try:
         stripe_refund = stripe.Refund.create(
-            payment_intent=refund_request['stripe_payment_intent_id'],
-            reason='requested_by_customer',
+            **refund_params,
+            idempotency_key=f"refund_request_{refund_request_id}",
         )
     except stripe.error.StripeError as e:
         db.execute(

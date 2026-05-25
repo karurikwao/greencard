@@ -10,6 +10,8 @@ CreateBroadcastInput,
 SupportTicket,
 AdminSupportTicket,
 CreateTicketInput,
+SupportAiAssistInput,
+SupportAiAssistResponse,
 } from './types';
 
 // ============================================================================
@@ -253,6 +255,26 @@ error: err instanceof Error ? err.message : 'Unknown error',
 // Support Tickets API
 // ============================================================================
 
+function normalizeTicket(row: Record<string, unknown>): SupportTicket {
+return {
+id: String(row.id || ''),
+userId: String(row.userId || row.user_id || ''),
+subject: String(row.subject || ''),
+category: (row.category || 'other') as SupportTicket['category'],
+message: String(row.message || ''),
+status: (row.status || 'open') as SupportTicket['status'],
+adminReply: (row.adminReply || row.admin_reply || undefined) as string | undefined,
+aiSummary: (row.aiSummary || row.ai_summary || undefined) as string | undefined,
+aiSuggestedReply: (row.aiSuggestedReply || row.ai_suggested_reply || undefined) as string | undefined,
+aiTriage: (row.aiTriage || row.ai_triage || undefined) as Record<string, unknown> | undefined,
+repliedBy: (row.repliedBy || row.replied_by || undefined) as string | undefined,
+repliedAt: (row.repliedAt || row.replied_at || undefined) as string | undefined,
+closedAt: (row.closedAt || row.closed_at || undefined) as string | undefined,
+createdAt: String(row.createdAt || row.created_at || new Date().toISOString()),
+updatedAt: String(row.updatedAt || row.updated_at || row.createdAt || row.created_at || new Date().toISOString()),
+};
+}
+
 /**
 * Create a new support ticket
 */
@@ -270,6 +292,9 @@ userId: user.id,
 subject: input.subject,
 category: input.category,
 message: input.message,
+aiSummary: input.aiSummary || null,
+aiSuggestedReply: input.aiSuggestedReply || null,
+aiTriage: input.aiTriage || {},
 });
 
 if (error) {
@@ -288,7 +313,7 @@ if (fetchError) {
 return { success: false, error: fetchError.message };
 }
 
-return { success: true, data: ticketData as SupportTicket };
+return { success: true, data: normalizeTicket(ticketData as Record<string, unknown>) };
 } catch (err) {
 console.error('Error creating ticket:', err);
 return {
@@ -314,9 +339,36 @@ console.error('Error fetching tickets:', error);
 return { success: false, error: error.message };
 }
 
-return { success: true, data: data as SupportTicket[] };
+return { success: true, data: ((data as Record<string, unknown>[]) || []).map(normalizeTicket) };
 } catch (err) {
 console.error('Error fetching tickets:', err);
+return {
+success: false,
+error: err instanceof Error ? err.message : 'Unknown error',
+};
+}
+}
+
+/**
+* Ask the AI support assistant for quick help and ticket triage.
+*/
+export async function supportAiAssist(
+input: SupportAiAssistInput
+): Promise<{ success: boolean; data?: SupportAiAssistResponse; error?: string }> {
+try {
+const { data, error } = await apiClient.invokeFunction<SupportAiAssistResponse>('support-ai-assist', {
+subject: input.subject || '',
+category: input.category || 'other',
+message: input.message || '',
+});
+
+if (error) {
+return { success: false, error: error.message };
+}
+
+return { success: true, data: data as SupportAiAssistResponse };
+} catch (err) {
+console.error('Error asking support AI:', err);
 return {
 success: false,
 error: err instanceof Error ? err.message : 'Unknown error',

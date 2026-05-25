@@ -66,6 +66,8 @@ export interface AdminRefundRequest extends RefundRequest {
 }
 
 export const REFUND_REASONS = [
+  { value: 'unauthorized_transaction', label: 'I did not authorize this purchase' },
+  { value: 'unclear_purchase', label: 'It was not clear what I was buying' },
   { value: 'not_satisfied', label: 'Not satisfied with the service' },
   { value: 'too_difficult', label: 'Questions were too difficult' },
   { value: 'not_needed', label: 'No longer need the service' },

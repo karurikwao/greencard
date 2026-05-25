@@ -66,6 +66,112 @@ def run_incremental_migrations(cur):
         $$ LANGUAGE plpgsql SECURITY DEFINER;
         """
     )
+    cur.execute(
+        """
+        ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+        ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_suggested_reply TEXT;
+        ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_triage JSONB DEFAULT '{}'::jsonb;
+        ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS last_ai_assisted_at TIMESTAMPTZ;
+
+        ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS support_tickets_category_check;
+        ALTER TABLE support_tickets
+          ADD CONSTRAINT support_tickets_category_check
+          CHECK (category IN ('billing', 'refund', 'technical', 'account', 'feature_request', 'other'));
+
+        CREATE OR REPLACE FUNCTION create_refund_request(
+            p_user_id UUID, p_subscription_id TEXT DEFAULT NULL,
+            p_stripe_payment_intent_id TEXT DEFAULT NULL,
+            p_stripe_charge_id TEXT DEFAULT NULL,
+            p_plan_type TEXT DEFAULT NULL, p_amount DECIMAL DEFAULT 0,
+            p_currency TEXT DEFAULT 'usd', p_purchased_at TIMESTAMPTZ DEFAULT NULL,
+            p_days_since_purchase INTEGER DEFAULT 0,
+            p_questions_completed INTEGER DEFAULT 0,
+            p_mock_interviews_completed INTEGER DEFAULT 0,
+            p_reason TEXT DEFAULT NULL, p_additional_comments TEXT DEFAULT NULL
+        )
+        RETURNS UUID AS $$
+        DECLARE
+            v_id UUID;
+            v_eligibility_status TEXT;
+        BEGIN
+            v_eligibility_status := CASE
+                WHEN p_reason = 'unauthorized_transaction' THEN 'eligible'
+                WHEN p_days_since_purchase <= 7
+                    AND p_questions_completed < 25
+                    AND p_mock_interviews_completed <= 1 THEN 'eligible'
+                WHEN p_reason = 'unclear_purchase'
+                    AND p_days_since_purchase <= 14
+                    AND p_questions_completed < 25
+                    AND p_mock_interviews_completed <= 1 THEN 'eligible'
+                ELSE 'not_eligible'
+            END;
+
+            INSERT INTO refund_requests (
+                user_id, subscription_id, stripe_payment_intent_id, stripe_charge_id,
+                plan_type, amount, currency, purchased_at, days_since_purchase,
+                questions_completed, mock_interviews_completed, eligibility_status,
+                reason, additional_comments
+            ) VALUES (
+                p_user_id, p_subscription_id, p_stripe_payment_intent_id, p_stripe_charge_id,
+                p_plan_type, p_amount, p_currency, p_purchased_at, p_days_since_purchase,
+                p_questions_completed, p_mock_interviews_completed, v_eligibility_status,
+                p_reason, p_additional_comments
+            )
+            RETURNING id INTO v_id;
+            RETURN v_id;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+        DROP FUNCTION IF EXISTS create_support_ticket(UUID, TEXT, TEXT, TEXT);
+
+        CREATE OR REPLACE FUNCTION create_support_ticket(
+            p_user_id UUID, p_subject TEXT, p_category TEXT, p_message TEXT,
+            p_ai_summary TEXT DEFAULT NULL, p_ai_suggested_reply TEXT DEFAULT NULL,
+            p_ai_triage JSONB DEFAULT '{}'::jsonb
+        )
+        RETURNS UUID AS $$
+        DECLARE
+            v_ticket_id UUID;
+        BEGIN
+            INSERT INTO support_tickets (
+                user_id, subject, category, message, ai_summary,
+                ai_suggested_reply, ai_triage, last_ai_assisted_at
+            )
+            VALUES (
+                p_user_id, p_subject, p_category, p_message, p_ai_summary,
+                p_ai_suggested_reply, COALESCE(p_ai_triage, '{}'::jsonb),
+                CASE WHEN p_ai_summary IS NOT NULL OR p_ai_suggested_reply IS NOT NULL THEN now() ELSE NULL END
+            )
+            RETURNING id INTO v_ticket_id;
+
+            PERFORM create_user_notification(
+                p_user_id, 'support', 'Support Ticket Created',
+                'Your support ticket "' || p_subject || '" has been submitted. We''ll respond soon.',
+                NULL, jsonb_build_object('ticket_id', v_ticket_id)
+            );
+            RETURN v_ticket_id;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+        CREATE OR REPLACE FUNCTION get_user_tickets_with_replies(p_user_id UUID)
+        RETURNS TABLE (
+            id UUID, subject TEXT, category TEXT, message TEXT,
+            status TEXT, admin_reply TEXT, replied_at TIMESTAMPTZ,
+            ai_summary TEXT, ai_suggested_reply TEXT, ai_triage JSONB,
+            created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+        ) AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT t.id, t.subject, t.category, t.message, t.status,
+                t.admin_reply, t.replied_at, t.ai_summary, t.ai_suggested_reply,
+                t.ai_triage, t.created_at, t.updated_at
+            FROM support_tickets t
+            WHERE t.user_id = p_user_id
+            ORDER BY t.created_at DESC;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER;
+        """
+    )
 
 
 def main():

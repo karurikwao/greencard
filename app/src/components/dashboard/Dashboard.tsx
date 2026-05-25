@@ -31,6 +31,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useReadiness } from '@/hooks/useReadiness';
 import { usePractice } from '@/lib/practice';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -38,6 +42,8 @@ import { usePricing } from '@/hooks/usePricing';
 import { normalizeAllTopics } from '@/lib/practice/normalize';
 import type { PracticeTopic } from '@/lib/practice/types';
 import { getPlanDisplayName, type PlanType } from '@/lib/plans';
+import { createBillingRefundRequest } from '@/lib/refunds/api';
+import { REFUND_REASONS, type RefundReason } from '@/lib/refunds/types';
 import { topics } from '@/data/topics';
 import { cn } from '@/lib/utils';
 
@@ -84,6 +90,11 @@ export function Dashboard({
   const [milestones] = useLocalStorage('interview-timeline-v2', []);
   const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | null>(null);
   const [billingMessage, setBillingMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState<RefundReason>('not_satisfied');
+  const [refundComments, setRefundComments] = useState('');
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [refundMessage, setRefundMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
 
@@ -225,6 +236,28 @@ export function Dashboard({
       setBillingMessage({ tone: 'error', text: result.error || 'Unable to start lifetime checkout.' });
       setBillingAction(null);
     }
+  };
+  const submitRefundRequest = async () => {
+    setRefundSubmitting(true);
+    setRefundMessage(null);
+    const result = await createBillingRefundRequest({
+      reason: refundReason,
+      additionalComments: refundComments,
+    });
+
+    if (result.success) {
+      setRefundMessage({
+        tone: 'success',
+        text: result.message || 'Refund request submitted for review.',
+      });
+      setRefundComments('');
+    } else {
+      setRefundMessage({
+        tone: 'error',
+        text: result.error || 'Unable to submit the refund request.',
+      });
+    }
+    setRefundSubmitting(false);
   };
   const featureTiles = [
     { label: 'Premium PDFs', enabled: featureAccess.pdfDownloads },
@@ -411,6 +444,16 @@ export function Dashboard({
                     <RefreshCw className="w-4 h-4 mr-2" />
                   )}
                   Resume monthly renewal
+                </Button>
+              )}
+              {hasPremium && (
+                <Button
+                  variant="outline"
+                  onClick={() => setRefundDialogOpen(true)}
+                  className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Request refund review
                 </Button>
               )}
               <Button variant="outline" onClick={onViewCouplePractice}>
@@ -610,6 +653,69 @@ export function Dashboard({
           <SupportTicketPanel className="md:col-span-1" />
         </div>
       </main>
+      <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Request Refund Review</DialogTitle>
+            <DialogDescription>
+              We use your Stripe payment record and account usage to route the request for review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Choose the reason that matches the facts. Unauthorized or unclear purchase claims are prioritized, and refunds are not issued automatically.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="refund-reason">Reason</Label>
+              <Select value={refundReason} onValueChange={(value) => setRefundReason(value as RefundReason)}>
+                <SelectTrigger id="refund-reason">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REFUND_REASONS.map((reason) => (
+                    <SelectItem key={reason.value} value={reason.value}>
+                      {reason.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="refund-comments">Details</Label>
+              <Textarea
+                id="refund-comments"
+                rows={4}
+                value={refundComments}
+                onChange={(e) => setRefundComments(e.target.value)}
+                placeholder="Add receipt details, charge date, or anything support should review."
+              />
+            </div>
+            {refundMessage && (
+              <div className={cn(
+                'rounded-lg border px-3 py-2 text-sm',
+                refundMessage.tone === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              )}>
+                {refundMessage.text}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefundDialogOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={submitRefundRequest} disabled={refundSubmitting}>
+              {refundSubmitting ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Submit review
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

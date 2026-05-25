@@ -295,9 +295,11 @@ export const apiClient = {
       'create-customer-portal': '/api/stripe/create-customer-portal',
       'cancel-subscription': '/api/stripe/cancel-subscription',
       'resume-subscription': '/api/stripe/resume-subscription',
+      'request-refund': '/api/stripe/request-refund',
       'generate-pdf-signed-url': '/api/pdf/generate-signed-url',
       'ai-interview-turn': '/api/ai/interview-turn',
-      'process-refund': '/api/rpc/process-refund',
+      'support-ai-assist': '/api/ai/support-assist',
+      'process-refund': '/api/process-refund',
       'trigger-coolify-rebuild': '/api/rpc/trigger-rebuild',
     };
     const route = routeMap[name] || `/api/invoke/${name}`;

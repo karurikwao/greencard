@@ -65,7 +65,7 @@ export const BROADCAST_AUDIENCE_LABELS: Record<BroadcastAudience, string> = {
 // Support Tickets
 // ============================================================================
 
-export type TicketCategory = 'billing' | 'technical' | 'account' | 'feature_request' | 'other';
+export type TicketCategory = 'billing' | 'refund' | 'technical' | 'account' | 'feature_request' | 'other';
 export type TicketStatus = 'open' | 'replied' | 'closed';
 
 export interface SupportTicket {
@@ -76,6 +76,9 @@ export interface SupportTicket {
   message: string;
   status: TicketStatus;
   adminReply?: string;
+  aiSummary?: string;
+  aiSuggestedReply?: string;
+  aiTriage?: Record<string, unknown>;
   repliedBy?: string;
   repliedAt?: string;
   closedAt?: string;
@@ -91,10 +94,32 @@ export interface CreateTicketInput {
   subject: string;
   category: TicketCategory;
   message: string;
+  aiSummary?: string;
+  aiSuggestedReply?: string;
+  aiTriage?: Record<string, unknown>;
+}
+
+export interface SupportAiAssistInput {
+  subject?: string;
+  category?: TicketCategory | '';
+  message?: string;
+}
+
+export interface SupportAiAssistResponse {
+  reply: string;
+  summary: string;
+  suggestedTicketSubject: string;
+  recommendedCategory: TicketCategory;
+  shouldCreateTicket: boolean;
+  urgency: 'low' | 'normal' | 'high';
+  provider: string;
+  model?: string | null;
+  fallback?: boolean;
 }
 
 export const TICKET_CATEGORIES: { value: TicketCategory; label: string }[] = [
   { value: 'billing', label: 'Billing Issue' },
+  { value: 'refund', label: 'Refund Request' },
   { value: 'technical', label: 'Technical Problem' },
   { value: 'account', label: 'Account Question' },
   { value: 'feature_request', label: 'Feature Request' },
