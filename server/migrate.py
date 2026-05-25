@@ -153,6 +153,8 @@ def run_incremental_migrations(cur):
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+        DROP FUNCTION IF EXISTS get_user_tickets_with_replies(UUID);
+
         CREATE OR REPLACE FUNCTION get_user_tickets_with_replies(p_user_id UUID)
         RETURNS TABLE (
             id UUID, subject TEXT, category TEXT, message TEXT,
