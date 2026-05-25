@@ -29,24 +29,24 @@ const comfortOptions: {
     label: 'Comfortable',
     description: 'I can answer this confidently',
     icon: CheckCircle,
-    colors: 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-    selectedColors: 'bg-emerald-50/70 border-emerald-200 text-emerald-800',
+    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
+    selectedColors: 'bg-emerald-50 border-emerald-300 text-emerald-900',
   },
   {
     value: 'needs-practice',
     label: 'Needs review',
     description: 'I want to practice this more',
     icon: RefreshCw,
-    colors: 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-    selectedColors: 'bg-amber-50/70 border-amber-200 text-amber-800',
+    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
+    selectedColors: 'bg-amber-50 border-amber-300 text-amber-900',
   },
   {
     value: 'nervous',
     label: 'Unsure',
     description: 'This question feels difficult',
     icon: AlertCircle,
-    colors: 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-    selectedColors: 'bg-rose-50/70 border-rose-200 text-rose-800',
+    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
+    selectedColors: 'bg-rose-50 border-rose-300 text-rose-900',
   },
 ];
 
@@ -62,10 +62,10 @@ export function ComfortActions({
   return (
     <div className={cn('space-y-5', className)}>
       <div>
-        <div className="text-sm font-medium text-slate-700 mb-1">
+        <div className="text-sm font-semibold text-slate-950 mb-1">
           How comfortable are you with this question?
         </div>
-        <div className="text-xs text-slate-500">
+        <div className="text-xs font-medium text-slate-600">
           Track your confidence to focus your study time
         </div>
       </div>
@@ -87,13 +87,13 @@ export function ComfortActions({
             >
               <Icon className={cn(
                 'w-4 h-4',
-                isSelected ? 'opacity-70' : 'text-slate-400'
+                isSelected ? 'opacity-90' : 'text-slate-600'
               )} />
               <div>
-                <div className="font-medium text-sm">{option.label}</div>
+                <div className="font-semibold text-sm">{option.label}</div>
                 <div className={cn(
-                  'text-xs mt-0.5',
-                  isSelected ? 'opacity-70' : 'text-slate-400'
+                  'text-xs mt-0.5 font-medium',
+                  isSelected ? 'opacity-90' : 'text-slate-600'
                 )}>
                   {option.description}
                 </div>
@@ -108,7 +108,7 @@ export function ComfortActions({
         size="sm"
         onClick={onSaveToggle}
         className={cn(
-          'text-slate-500 hover:text-slate-700 hover:bg-slate-100',
+          'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-medium',
           isSavedForLater && 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
         )}
       >

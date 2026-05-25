@@ -154,14 +154,14 @@ export function TopicPracticePage({
           <div className="flex items-center justify-between">
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 font-normal">
+                <Button variant="outline" size="sm" className="border-slate-300 text-slate-700 font-medium">
                   <List className="w-4 h-4 mr-2" />
                   All questions
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-80 sm:w-96">
                 <SheetHeader>
-                  <SheetTitle className="text-slate-700 font-medium">Questions in this topic</SheetTitle>
+                <SheetTitle className="text-slate-950 font-semibold">Questions in this topic</SheetTitle>
                 </SheetHeader>
                 <div className="mt-6 space-y-1 max-h-[calc(100vh-8rem)] overflow-y-auto pr-2">
                   {topic.questions.map((q, idx) => {
@@ -185,13 +185,13 @@ export function TopicPracticePage({
                         <div className="flex items-start gap-3">
                           <span className={cn(
                             'text-xs w-5',
-                            isCurrent ? 'text-slate-600 font-medium' : 'text-slate-400'
+                            isCurrent ? 'text-slate-800 font-semibold' : 'text-slate-600 font-medium'
                           )}>
                             {idx + 1}
                           </span>
                           <span className={cn(
                             'line-clamp-2 leading-relaxed',
-                            isCurrent ? 'text-slate-800' : 'text-slate-600'
+                            isCurrent ? 'text-slate-950 font-medium' : 'text-slate-700'
                           )}>
                             {q.prompt}
                           </span>
@@ -204,10 +204,10 @@ export function TopicPracticePage({
             </Sheet>
 
             {/* Quick Stats */}
-            <div className="text-sm text-slate-500">
+            <div className="text-sm font-medium text-slate-700">
               <span className="text-slate-700">{currentIndex + 1}</span>
-              <span className="text-slate-400 mx-1.5">/</span>
-              <span className="text-slate-400">{totalQuestions}</span>
+              <span className="text-slate-500 mx-1.5">/</span>
+              <span className="text-slate-600">{totalQuestions}</span>
             </div>
           </div>
 
@@ -219,7 +219,7 @@ export function TopicPracticePage({
           />
 
           {/* Comfort Actions */}
-          <Card className="border-slate-200/60 shadow-sm">
+          <Card className="border-slate-300 shadow-sm">
             <CardContent className="p-6">
               <ComfortActions
                 comfortStatus={currentComfortStatus}
@@ -232,7 +232,7 @@ export function TopicPracticePage({
 
           {/* Related Questions */}
           {hasRelated && (
-            <Card className="border-slate-200/60 shadow-sm">
+            <Card className="border-slate-300 shadow-sm">
               <CardContent className="p-6">
                 <RelatedQuestions
                   relatedQuestions={relatedQuestions}
@@ -244,11 +244,11 @@ export function TopicPracticePage({
 
           {/* Checklist Preview */}
           {topic.checklist.length > 0 && (
-            <Card className="border-slate-200/60 shadow-sm">
+            <Card className="border-slate-300 shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle className="w-4 h-4 text-slate-400" />
-                  <h4 className="font-medium text-slate-700">Preparation checklist</h4>
+                  <CheckCircle className="w-4 h-4 text-slate-600" />
+                  <h4 className="font-semibold text-slate-900">Preparation checklist</h4>
                 </div>
                 <div className="space-y-2">
                   {topic.checklist.slice(0, 3).map((item, idx) => (
@@ -256,14 +256,14 @@ export function TopicPracticePage({
                       <Checkbox id={`checklist-${idx}`} className="mt-0.5 border-slate-300" />
                       <Label 
                         htmlFor={`checklist-${idx}`}
-                        className="text-sm text-slate-600 cursor-pointer leading-relaxed"
+                        className="text-sm text-slate-800 cursor-pointer leading-relaxed"
                       >
                         {item}
                       </Label>
                     </div>
                   ))}
                   {topic.checklist.length > 3 && (
-                    <p className="text-xs text-slate-400 text-center pt-2">
+                    <p className="text-xs font-medium text-slate-600 text-center pt-2">
                       {topic.checklist.length - 3} more items available
                     </p>
                   )}
@@ -278,7 +278,7 @@ export function TopicPracticePage({
               variant="outline"
               onClick={goToPrevious}
               disabled={currentIndex === 0}
-              className="min-w-[100px] border-slate-200 text-slate-600 font-normal"
+              className="min-w-[100px] border-slate-300 text-slate-700 font-medium"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
               Previous
@@ -287,7 +287,7 @@ export function TopicPracticePage({
             <Button
               onClick={goToNext}
               disabled={currentIndex >= totalQuestions - 1}
-              className="min-w-[100px] bg-slate-700 hover:bg-slate-800 text-white font-normal"
+              className="min-w-[100px] bg-slate-800 hover:bg-slate-900 text-white font-medium"
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />

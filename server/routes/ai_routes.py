@@ -89,7 +89,7 @@ def _default_model_for_provider(provider):
         'openai': 'gpt-5-mini',
         'anthropic': 'claude-sonnet-4-5-20251022',
         'deepseek': 'deepseek-chat',
-        'nvidia': 'nvidia/llama-3.1-nemotron-nano-8b-v1',
+        'nvidia': 'meta/llama-3.1-8b-instruct',
     }.get(provider, 'gpt-5-mini')
 
 
@@ -273,7 +273,7 @@ def _call_openai_compatible(base_url, api_key, model, messages):
         f'{base_url.rstrip("/")}/chat/completions',
         headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model, 'messages': messages, 'max_tokens': 700, 'temperature': 0.25},
-        timeout=45
+        timeout=90
     )
     resp.raise_for_status()
     return resp.json()['choices'][0]['message']['content']
@@ -328,6 +328,6 @@ def _call_nvidia(model, messages):
     return _call_openai_compatible(
         'https://integrate.api.nvidia.com/v1',
         NVIDIA_API_KEY,
-        model or 'nvidia/llama-3.1-nemotron-nano-8b-v1',
+        model or 'meta/llama-3.1-8b-instruct',
         messages,
     )

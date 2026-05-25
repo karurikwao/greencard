@@ -33,7 +33,7 @@ export function QuestionCard({
       {/* Progress Header - Minimal */}
       <div className="bg-slate-50/50 border-b border-slate-100 px-5 py-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+          <span className="text-xs font-semibold text-slate-600 uppercase">
             Question {questionNumber} of {totalQuestions}
           </span>
           <div className="flex items-center gap-2">
@@ -55,7 +55,7 @@ export function QuestionCard({
               <MessageSquare className="w-5 h-5" />
             </div>
             <div className="flex-1 pt-1">
-              <h3 className="text-xl sm:text-2xl text-slate-800 leading-relaxed font-normal">
+              <h3 className="text-xl sm:text-2xl text-slate-950 leading-relaxed font-medium">
                 {question.prompt}
               </h3>
             </div>
@@ -67,7 +67,7 @@ export function QuestionCard({
           <Button
             onClick={() => setIsRevealed(true)}
             variant="outline"
-            className="w-full py-6 border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-600 hover:text-slate-800 transition-all group text-base font-normal"
+            className="w-full py-6 border-slate-300 hover:border-slate-500 hover:bg-slate-50 text-slate-700 hover:text-slate-950 transition-all group text-base font-medium"
           >
             <Eye className="w-4 h-4 mr-2 text-slate-400 group-hover:text-slate-600" />
             View suggested response
@@ -79,17 +79,17 @@ export function QuestionCard({
           <div className="space-y-5 animate-in fade-in duration-500">
             {/* Sample Answer - Calm, professional */}
             {question.sampleAnswer && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-6">
+              <div className="bg-slate-50 border border-slate-300 rounded-lg p-6">
                 <div className="flex items-center gap-2 mb-4">
-                  <Sparkles className="w-4 h-4 text-slate-400" />
-                  <span className="text-sm font-medium text-slate-600">
+                  <Sparkles className="w-4 h-4 text-slate-600" />
+                  <span className="text-sm font-semibold text-slate-800">
                     One way to respond
                   </span>
                 </div>
-                <blockquote className="text-slate-700 leading-relaxed pl-4 border-l-2 border-slate-300">
+                <blockquote className="text-slate-950 leading-8 pl-4 border-l-2 border-slate-400">
                   {question.sampleAnswer}
                 </blockquote>
-                <p className="text-xs text-slate-400 mt-4">
+                <p className="text-xs font-medium text-slate-600 mt-4">
                   Adapt this to match your own experience and speaking style.
                 </p>
               </div>
@@ -124,7 +124,7 @@ export function QuestionCard({
               onClick={() => setIsRevealed(false)}
               variant="ghost"
               size="sm"
-              className="text-slate-400 hover:text-slate-600"
+              className="text-slate-600 hover:text-slate-900"
             >
               <EyeOff className="w-4 h-4 mr-2" />
               Hide response
@@ -147,19 +147,19 @@ function GuidanceBlock({ type, content }: GuidanceBlockProps) {
       icon: Sparkles,
       label: 'Helpful context',
       colors: 'bg-amber-50/50 border-amber-100 text-amber-900',
-      iconColor: 'text-amber-500/70',
+      iconColor: 'text-amber-700',
     },
     'looking-for': {
       icon: Shield,
       label: 'What helps your case',
       colors: 'bg-emerald-50/50 border-emerald-100 text-emerald-900',
-      iconColor: 'text-emerald-500/70',
+      iconColor: 'text-emerald-700',
     },
     avoid: {
       icon: AlertTriangle,
       label: 'Consider adding more detail',
       colors: 'bg-rose-50/50 border-rose-100 text-rose-900',
-      iconColor: 'text-rose-500/70',
+      iconColor: 'text-rose-700',
     },
   };
 
@@ -171,8 +171,8 @@ function GuidanceBlock({ type, content }: GuidanceBlockProps) {
       <div className="flex items-start gap-3">
         <Icon className={cn('w-4 h-4 mt-0.5 flex-shrink-0', config.iconColor)} />
         <div>
-          <div className="text-xs font-medium opacity-60 mb-1">{config.label}</div>
-          <p className="text-sm leading-relaxed opacity-90">{content}</p>
+          <div className="text-xs font-semibold mb-1">{config.label}</div>
+          <p className="text-sm leading-relaxed">{content}</p>
         </div>
       </div>
     </div>

@@ -33,9 +33,9 @@ export function RelatedQuestions({
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="flex items-center gap-2 text-slate-600">
-        <Lightbulb className="w-4 h-4 text-slate-400" />
-        <h4 className="font-medium text-sm">Related questions to consider</h4>
+      <div className="flex items-center gap-2 text-slate-800">
+        <Lightbulb className="w-4 h-4 text-slate-600" />
+        <h4 className="font-semibold text-sm">Related questions to consider</h4>
       </div>
 
       <div className="space-y-2">
@@ -66,33 +66,33 @@ function RelatedQuestionCard({ result, index, onClick }: RelatedQuestionCardProp
       onClick={onClick}
       className={cn(
         'cursor-pointer transition-all duration-200',
-        'hover:shadow-sm hover:border-slate-300 hover:bg-slate-50/30',
-        'border-slate-200/60 group'
+        'hover:shadow-sm hover:border-slate-400 hover:bg-slate-50/70',
+        'border-slate-300 group'
       )}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs font-medium group-hover:bg-slate-200 transition-colors">
+          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-xs font-semibold group-hover:bg-slate-200 transition-colors">
             {index + 1}
           </div>
           
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-700 leading-relaxed">
+            <p className="text-sm text-slate-950 leading-relaxed font-medium">
               {question.prompt}
             </p>
             
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-slate-400">
+              <span className="text-xs font-medium text-slate-600">
                 {topicTitle}
               </span>
-              <span className="text-slate-300">·</span>
-              <span className="text-xs text-slate-400">
+              <span className="text-slate-500">-</span>
+              <span className="text-xs font-medium text-slate-600">
                 {reasonLabels[reason]}
               </span>
             </div>
           </div>
           
-          <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-0.5" />
+          <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-0.5" />
         </div>
       </CardContent>
     </Card>

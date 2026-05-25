@@ -559,7 +559,7 @@ function Hero() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-24 pb-16">
         <div className="max-w-2xl">
-          <Badge className="mb-6 bg-blue-500/90 text-white hover:bg-blue-500 border-0 backdrop-blur-sm font-semibold">
+          <Badge className="mb-6 bg-blue-700 text-white hover:bg-blue-800 border-0 font-semibold">
             Free Interview Practice Resources
           </Badge>
           
@@ -599,19 +599,19 @@ function Hero() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
               <div className="text-3xl font-bold text-white">28</div>
-              <div className="text-sm text-slate-300">Topics</div>
+              <div className="text-sm font-medium text-white/90">Topics</div>
             </div>
             <div className="text-center p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
               <div className="text-3xl font-bold text-white">1,200+</div>
-              <div className="text-sm text-slate-300">Questions</div>
+              <div className="text-sm font-medium text-white/90">Questions</div>
             </div>
             <div className="text-center p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
               <div className="text-3xl font-bold text-white">100%</div>
-              <div className="text-sm text-slate-300">Free</div>
+              <div className="text-sm font-medium text-white/90">Free</div>
             </div>
             <div className="text-center p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
               <div className="text-3xl font-bold text-white">150+</div>
-              <div className="text-sm text-slate-300">Sample Answers</div>
+              <div className="text-sm font-medium text-white/90">Sample Answers</div>
             </div>
           </div>
         </div>

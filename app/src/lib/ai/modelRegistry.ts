@@ -88,8 +88,8 @@ export const REGISTERED_MODELS: AIModelOption[] = [
   // NVIDIA NIM Models
   {
     provider: 'nvidia',
-    modelId: 'nvidia/llama-3.1-nemotron-nano-8b-v1',
-    displayName: 'NVIDIA Nemotron Nano 8B',
+    modelId: 'meta/llama-3.1-8b-instruct',
+    displayName: 'Llama 3.1 8B on NVIDIA',
     description: 'Fast NVIDIA-hosted model for interview coaching',
     tier: 'budget',
     enabled: true,
@@ -99,8 +99,8 @@ export const REGISTERED_MODELS: AIModelOption[] = [
   },
   {
     provider: 'nvidia',
-    modelId: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
-    displayName: 'NVIDIA Nemotron Super 49B',
+    modelId: 'meta/llama-3.3-70b-instruct',
+    displayName: 'Llama 3.3 70B on NVIDIA',
     description: 'Higher-quality NVIDIA-hosted model for nuanced feedback',
     tier: 'premium',
     enabled: true,
@@ -140,8 +140,8 @@ export const PROVIDER_CONFIGS: Record<AIProvider, AIProviderConfig> = {
     provider: 'nvidia',
     enabled: true,
     apiKeyEnvVar: 'NVIDIA_API_KEY', // Server-side only (no VITE_ prefix)
-    defaultModel: 'nvidia/llama-3.1-nemotron-nano-8b-v1',
-    fallbackModel: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
+    defaultModel: 'meta/llama-3.1-8b-instruct',
+    fallbackModel: 'meta/llama-3.3-70b-instruct',
   },
 };
 
