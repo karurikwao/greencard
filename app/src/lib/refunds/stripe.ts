@@ -4,9 +4,6 @@
 
 import type { RefundRequest } from './types';
 
-// Stripe API key from environment
-const STRIPE_SECRET_KEY = import.meta.env.VITE_STRIPE_SECRET_KEY || '';
-
 interface StripeRefundResult {
   success: boolean;
   refundId?: string;
@@ -18,56 +15,14 @@ interface StripeRefundResult {
  * Note: In production, this should be done via a secure backend/edge function
  */
 export async function processStripeRefund(
-  paymentIntentId: string,
-  amount?: number // Optional: partial refund amount in cents
+  _paymentIntentId: string,
+  _amount?: number
 ): Promise<StripeRefundResult> {
-  try {
-    // Check if we're in a browser environment with limited Stripe access
-    if (typeof window !== 'undefined' && !STRIPE_SECRET_KEY) {
-      console.warn('Stripe refund must be processed server-side');
-      return { 
-        success: false, 
-        error: 'Stripe refunds must be processed server-side for security' 
-      };
-    }
-
-    const refundData: {
-      payment_intent: string;
-      amount?: number;
-    } = {
-      payment_intent: paymentIntentId,
-    };
-
-    if (amount) {
-      refundData.amount = amount;
-    }
-
-    const response = await fetch('https://api.stripe.com/v1/refunds', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(refundData as unknown as Record<string, string>),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { 
-        success: false, 
-        error: errorData.error?.message || 'Failed to process refund' 
-      };
-    }
-
-    const data = await response.json();
-    return { success: true, refundId: data.id };
-  } catch (err) {
-    console.error('Error processing Stripe refund:', err);
-    return { 
-      success: false, 
-      error: err instanceof Error ? err.message : 'Unknown error' 
-    };
-  }
+  console.warn('Stripe refunds must be processed by the authenticated backend API.');
+  return {
+    success: false,
+    error: 'Stripe refunds must be processed server-side for security',
+  };
 }
 
 /**

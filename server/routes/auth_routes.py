@@ -81,17 +81,26 @@ def signup():
             (user_id, email, password_hash)
         )
         cur.execute(
-            """INSERT INTO user_profiles (user_id, email, first_name, last_name, display_name, referral_code, role, is_active)
-               VALUES (%s, %s, %s, %s, %s, %s, 'user', true)""",
+            """UPDATE user_profiles
+               SET first_name = %s,
+                   last_name = %s,
+                   display_name = %s,
+                   referral_code = %s,
+                   updated_at = now()
+               WHERE user_id = %s""",
             (
-                user_id, email, first_name, last_name,
+                first_name, last_name,
                 (f"{first_name} {last_name}".strip() if first_name and last_name else email),
-                promo_code
+                promo_code,
+                user_id
             )
         )
         cur.execute(
-            """INSERT INTO user_subscriptions (user_id, plan_type, status, trial_starts_at, trial_ends_at)
-               VALUES (%s, 'trial', 'trialing', now(), now() + INTERVAL '7 days')""",
+            """UPDATE user_subscriptions
+               SET trial_starts_at = COALESCE(trial_starts_at, now()),
+                   trial_ends_at = COALESCE(trial_ends_at, now() + INTERVAL '7 days'),
+                   updated_at = now()
+               WHERE user_id = %s""",
             (user_id,)
         )
         conn.commit()
