@@ -9,6 +9,7 @@ from auth import (
     decode_token, require_auth, require_admin, optional_auth
 )
 import db
+from email_service import send_password_reset_message, send_welcome_email
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -21,11 +22,14 @@ def send_password_reset_email(email: str, reset_token: str):
     email_from = os.getenv('EMAIL_FROM', 'noreply@greencardprep.com')
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
-    if not smtp_host or not smtp_user:
-        print(f"[DEV] Password reset for {email}: {frontend_url}/reset-password?token={reset_token}")
-        return True
-
     reset_url = f"{frontend_url}/reset-password?token={reset_token}"
+
+    if os.getenv('RESEND_API_KEY'):
+        return send_password_reset_message(email, reset_url).get('success', False)
+
+    if not smtp_host or not smtp_user:
+        print(f"[DEV] Password reset for {email}: {reset_url}")
+        return True
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = 'Reset Your Password - GreenCardPrep'
@@ -105,6 +109,11 @@ def signup():
         )
         conn.commit()
         cur.close()
+
+    try:
+        send_welcome_email(email, first_name)
+    except Exception as e:
+        print(f"Welcome email failed for {email}: {e}")
 
     token = create_token(user_id, email, 'user')
     refresh = create_refresh_token(user_id)

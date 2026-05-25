@@ -623,6 +623,8 @@ def admin_system_status():
     stripe_secret = os.getenv('STRIPE_SECRET_KEY', '')
     stripe_publishable = os.getenv('STRIPE_PUBLISHABLE_KEY', '') or os.getenv('VITE_STRIPE_PUBLISHABLE_KEY', '')
     stripe_webhook = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+    resend_api_key = os.getenv('RESEND_API_KEY', '')
+    email_from = os.getenv('EMAIL_FROM') or os.getenv('RESEND_FROM_EMAIL') or ''
 
     if stripe_secret.startswith('sk_test_'):
         stripe_mode = 'test'
@@ -723,6 +725,13 @@ def admin_system_status():
         },
         'database': {
             'urlConfigured': bool(os.getenv('DATABASE_URL')),
+        },
+        'email': {
+            'provider': 'resend' if resend_api_key else ('smtp' if os.getenv('SMTP_HOST') else 'dev'),
+            'resendConfigured': bool(resend_api_key),
+            'smtpConfigured': bool(os.getenv('SMTP_HOST') and os.getenv('SMTP_USER')),
+            'fromConfigured': bool(email_from),
+            'fromAddress': email_from,
         },
     })
 

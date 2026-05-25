@@ -44,6 +44,13 @@ export interface AdminSystemStatus {
   database: {
     urlConfigured: boolean;
   };
+  email: {
+    provider: 'resend' | 'smtp' | 'dev';
+    resendConfigured: boolean;
+    smtpConfigured: boolean;
+    fromConfigured: boolean;
+    fromAddress: string;
+  };
 }
 
 export async function fetchAdminSystemStatus(): Promise<AdminSystemStatus> {

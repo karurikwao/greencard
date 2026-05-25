@@ -32,7 +32,8 @@ import {
   FileText,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Mail
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -934,7 +935,7 @@ function SystemTab() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div className="rounded-lg border border-slate-200 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Environment</div>
               <div className="mt-1 font-medium text-slate-800">{status?.environment || 'Unknown'}</div>
@@ -951,6 +952,13 @@ function SystemTab() {
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stripe webhook</div>
               <div className="mt-2"><ConfigBadge configured={Boolean(status?.stripe.webhookReady)} /></div>
             </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Mail className="h-3.5 w-3.5" />
+                Email
+              </div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.email.resendConfigured || status?.email.smtpConfigured)} /></div>
+            </div>
           </div>
 
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -961,6 +969,19 @@ function SystemTab() {
                 <div className="font-medium text-slate-800 mt-3">Frontend URL</div>
                 <div className="break-all">{status.frontendUrl}</div>
               </>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            <div className="font-medium text-slate-800">Transactional email</div>
+            <div className="mt-1">
+              Provider: <span className="font-medium">{status?.email.provider || 'Not loaded'}</span>
+            </div>
+            <div className="mt-1">
+              Welcome, password reset, and purchase confirmation emails use the configured server email provider.
+            </div>
+            {status?.email.fromAddress && (
+              <div className="mt-2 break-all">From: {status.email.fromAddress}</div>
             )}
           </div>
         </CardContent>

@@ -5,6 +5,7 @@ import stripe
 from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
 import db
+from email_service import send_purchase_confirmation_email
 
 stripe_bp = Blueprint('stripe', __name__)
 
@@ -339,6 +340,7 @@ def _handle_checkout_completed(session_data):
     customer_id = session_data.get('customer')
     subscription_id = session_data.get('subscription')
     payment_intent_id = session_data.get('payment_intent')
+    provider_ref = subscription_id or payment_intent_id
     promo_code = metadata.get('promo_code')
 
     if not user_id or not plan_type:
@@ -346,6 +348,17 @@ def _handle_checkout_completed(session_data):
 
     import json as json_mod
     now_iso = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+
+    existing_subscription = db.query_one(
+        "SELECT plan_type, status, provider_subscription_id FROM user_subscriptions WHERE user_id = %s",
+        (user_id,)
+    )
+    should_send_purchase_email = (
+        not existing_subscription
+        or existing_subscription.get('status') != 'active'
+        or existing_subscription.get('plan_type') != plan_type
+        or (provider_ref and existing_subscription.get('provider_subscription_id') != provider_ref)
+    )
 
     meta = {}
     if promo_code:
@@ -368,6 +381,18 @@ def _handle_checkout_completed(session_data):
             ))
         except Exception:
             pass
+
+    if should_send_purchase_email:
+        try:
+            customer_details = session_data.get('customer_details', {}) or {}
+            recipient = customer_details.get('email')
+            if not recipient:
+                user_row = db.query_one("SELECT email FROM users WHERE id = %s", (user_id,))
+                recipient = user_row['email'] if user_row else None
+            if recipient:
+                send_purchase_confirmation_email(recipient, plan_type, session_data.get('id'))
+        except Exception as e:
+            print(f"Purchase confirmation email failed for user {user_id}: {e}")
 
 
 def _handle_subscription_updated(subscription_data):
