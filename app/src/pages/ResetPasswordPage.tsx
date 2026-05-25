@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/apiClient';
 
 export function ResetPasswordPage() {
   const [newPassword, setNewPassword] = useState('');
@@ -26,24 +26,17 @@ export function ResetPasswordPage() {
 
   // Check for recovery token on mount
   useEffect(() => {
-    const checkRecoveryToken = async () => {
+    const checkRecoveryToken = () => {
       try {
         const token = new URLSearchParams(window.location.search).get('token');
-        const { data: session, error: sessionError } = await supabase.auth.getSession();
 
-        if (sessionError) {
-          setError('Invalid or expired reset link. Please request a new password reset.');
-          setHasRecoveryToken(false);
-          return;
-        }
-
-        if (token || session) {
+        if (token) {
           setHasRecoveryToken(true);
         } else {
           setError('Invalid reset link. Please request a password reset from the login page.');
           setHasRecoveryToken(false);
         }
-      } catch (err) {
+      } catch {
         setError('Something went wrong. Please try again or request a new reset link.');
         setHasRecoveryToken(false);
       } finally {
@@ -73,7 +66,7 @@ export function ResetPasswordPage() {
     }
 
     try {
-    const { error: updateError } = await supabase.auth.updatePassword(newPassword);
+      const { error: updateError } = await apiClient.auth.updatePassword(newPassword);
 
       if (updateError) {
         if (updateError.message.includes('expired') || updateError.message.includes('invalid')) {
@@ -89,7 +82,7 @@ export function ResetPasswordPage() {
       
       // Clear the URL hash to prevent confusion
       window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);

@@ -743,6 +743,107 @@ def admin_system_status():
     })
 
 
+@api_bp.route('/admin/users', methods=['GET', 'POST'])
+@require_admin
+def admin_users():
+    limit = request.args.get('limit', 100, type=int) or 100
+    limit = max(1, min(limit, 250))
+
+    users_sql = """
+        WITH ticket_stats AS (
+            SELECT
+                user_id,
+                COUNT(*) AS total_tickets,
+                COUNT(*) FILTER (WHERE status = 'open') AS open_tickets,
+                MAX(created_at)::text AS last_ticket_at
+            FROM support_tickets
+            GROUP BY user_id
+        ),
+        partner_stats AS (
+            SELECT
+                owner_user_id AS user_id,
+                COUNT(*) FILTER (WHERE status = 'connected') AS connected_partners,
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending_partners
+            FROM (
+                SELECT user_id AS owner_user_id, status FROM partner_connections
+                UNION ALL
+                SELECT partner_id AS owner_user_id, status FROM partner_connections
+            ) all_partner_connections
+            GROUP BY owner_user_id
+        )
+        SELECT
+            u.id::text AS id,
+            u.email,
+            u.created_at::text AS joined_at,
+            u.updated_at::text AS updated_at,
+            COALESCE(
+                NULLIF(p.display_name, ''),
+                NULLIF(TRIM(CONCAT_WS(' ', p.first_name, p.last_name)), ''),
+                u.email
+            ) AS display_name,
+            COALESCE(p.role, 'user') AS role,
+            COALESCE(p.is_active, true) AS is_active,
+            COALESCE(s.plan_type, 'trial') AS plan_type,
+            COALESCE(s.status, 'trialing') AS subscription_status,
+            s.provider,
+            s.provider_customer_id,
+            s.provider_subscription_id,
+            s.trial_ends_at::text AS trial_ends_at,
+            s.current_period_ends_at::text AS current_period_ends_at,
+            s.ends_at::text AS ends_at,
+            COALESCE(ds.total_downloads, 0) AS total_downloads,
+            COALESCE(ds.unique_pdfs_downloaded, 0) AS unique_pdfs_downloaded,
+            ds.last_download_at::text AS last_download_at,
+            COALESCE(ts.total_tickets, 0) AS total_tickets,
+            COALESCE(ts.open_tickets, 0) AS open_tickets,
+            ts.last_ticket_at,
+            COALESCE(ps.connected_partners, 0) AS connected_partners,
+            COALESCE(ps.pending_partners, 0) AS pending_partners
+        FROM users u
+        LEFT JOIN user_profiles p ON p.user_id = u.id
+        LEFT JOIN user_subscriptions s ON s.user_id = u.id
+        LEFT JOIN pdf_download_summaries ds ON ds.user_id = u.id
+        LEFT JOIN ticket_stats ts ON ts.user_id = u.id
+        LEFT JOIN partner_stats ps ON ps.user_id = u.id
+        ORDER BY u.created_at DESC
+        LIMIT %s
+    """
+
+    totals_sql = """
+        WITH ticket_stats AS (
+            SELECT user_id, COUNT(*) FILTER (WHERE status = 'open') AS open_tickets
+            FROM support_tickets
+            GROUP BY user_id
+        )
+        SELECT
+            COUNT(*) AS total_users,
+            COUNT(*) FILTER (
+                WHERE COALESCE(s.plan_type, 'trial') <> 'trial'
+                AND COALESCE(s.status, 'trialing') IN ('active', 'canceled', 'grace_period')
+            ) AS paid_users,
+            COUNT(*) FILTER (WHERE COALESCE(s.status, 'trialing') = 'trialing') AS trial_users,
+            COUNT(*) FILTER (WHERE COALESCE(ts.open_tickets, 0) > 0) AS users_with_open_tickets
+        FROM users u
+        LEFT JOIN user_subscriptions s ON s.user_id = u.id
+        LEFT JOIN ticket_stats ts ON ts.user_id = u.id
+    """
+
+    try:
+        rows = db.query_all(users_sql, (limit,))
+        totals = db.query_one(totals_sql) or {}
+        return jsonify({
+            'users': rows,
+            'totals': {
+                'totalUsers': totals.get('total_users', 0),
+                'paidUsers': totals.get('paid_users', 0),
+                'trialUsers': totals.get('trial_users', 0),
+                'usersWithOpenTickets': totals.get('users_with_open_tickets', 0),
+            },
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @api_bp.route('/process-refund', methods=['POST'])
 @require_admin
 def process_refund():

@@ -18,7 +18,6 @@ import {
   DollarSign,
   Activity,
   Search,
-  Filter,
   RefreshCw,
   Tag,
   TrendingUp,
@@ -51,6 +50,7 @@ import { SEOExpansionTab } from './SEOExpansionTab';
 import { AdminRefundDashboard } from '@/components/refunds';
 import { PAID_PLANS } from '@/lib/plans';
 import { fetchAdminSystemStatus, type AdminSystemStatus } from '@/lib/admin/systemStatus';
+import { fetchAdminUsers, type AdminUserSnapshot, type AdminUsersResponse } from '@/lib/admin/users';
 
 interface SuperAdminPortalProps {
   onClose: () => void;
@@ -182,7 +182,7 @@ export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
         {/* Notification alert - available for future use */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-11 mb-8">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-12 mb-8">
             <TabsTrigger value="overview" className="gap-2">
               <Activity className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -365,13 +365,79 @@ function OverviewTab() {
 // Users Tab
 function UsersTab() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [usersResponse, setUsersResponse] = useState<AdminUsersResponse | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUserSnapshot | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadUsers = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setUsersResponse(await fetchAdminUsers(150));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load users');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return 'Not set';
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date(value));
+    } catch {
+      return value;
+    }
+  };
+
+  const filteredUsers = (usersResponse?.users ?? []).filter(user => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [user.email, user.display_name, user.id, user.plan_type, user.subscription_status]
+      .some(value => String(value || '').toLowerCase().includes(query));
+  });
+
+  const planBadgeClass = (planType: AdminUserSnapshot['plan_type']) => {
+    if (planType === 'lifetime') return 'bg-amber-100 text-amber-800 border-amber-200';
+    if (planType === 'monthly' || planType === 'interviewPass') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    return 'bg-slate-100 text-slate-700 border-slate-200';
+  };
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Total Users" value={(usersResponse?.totals.totalUsers ?? 0).toLocaleString()} change="" trend="up" icon={Users} />
+        <StatCard title="Paid Users" value={(usersResponse?.totals.paidUsers ?? 0).toLocaleString()} change="" trend="up" icon={CreditCard} />
+        <StatCard title="Trial Users" value={(usersResponse?.totals.trialUsers ?? 0).toLocaleString()} change="" trend="up" icon={Activity} />
+        <StatCard title="Need Help" value={(usersResponse?.totals.usersWithOpenTickets ?? 0).toLocaleString()} change="" trend="up" icon={MessageSquare} />
+      </div>
+
+      {error && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            {error}
+          </div>
+          <Button variant="outline" size="sm" onClick={loadUsers}>Retry</Button>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">User Management</CardTitle>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="text-base">User Management</CardTitle>
+              <CardDescription>Live account, billing, PDF download, support, and spouse-sync snapshots.</CardDescription>
+            </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -382,55 +448,126 @@ function UsersTab() {
                   className="pl-10 w-64"
                 />
               </div>
-              <Button variant="outline" size="sm">
-                <Filter className="w-4 h-4 mr-1" />
-                Filter
+              <Button variant="outline" size="sm" onClick={loadUsers}>
+                <RefreshCw className={cn('w-4 h-4 mr-1', isLoading && 'animate-spin')} />
+                Refresh
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b">
-                <tr>
-                  <th className="text-left p-3 font-medium text-slate-600">User</th>
-                  <th className="text-left p-3 font-medium text-slate-600">Plan</th>
-                  <th className="text-left p-3 font-medium text-slate-600">Status</th>
-                  <th className="text-left p-3 font-medium text-slate-600">Joined</th>
-                  <th className="text-left p-3 font-medium text-slate-600">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <tr key={i} className="border-b last:border-0">
-                    <td className="p-3">
-                      <div>
-                        <div className="font-medium text-slate-800">user{i}@example.com</div>
-                        <div className="text-xs text-slate-400">User ID: {i}23456</div>
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <Badge variant={i % 2 === 0 ? "default" : "secondary"}>
-                        {i % 2 === 0 ? "Pro" : "Free"}
-                      </Badge>
-                    </td>
-                    <td className="p-3">
-                      <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
-                        Active
-                      </Badge>
-                    </td>
-                    <td className="p-3 text-slate-500">Jan {i + 10}, 2025</td>
-                    <td className="p-3">
-                      <Button variant="ghost" size="sm">View</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-600">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Loading users...
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">No users match this search.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="text-left p-3 font-medium text-slate-600">User</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Plan</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Dashboard Snapshot</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Joined</th>
+                      <th className="text-left p-3 font-medium text-slate-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user) => (
+                      <tr key={user.id} className="border-b last:border-0">
+                        <td className="p-3">
+                          <div>
+                            <div className="font-medium text-slate-900">{user.display_name}</div>
+                            <div className="text-xs text-slate-600">{user.email}</div>
+                            <div className="text-xs text-slate-400">ID: {user.id.slice(0, 8)}</div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="space-y-1">
+                            <Badge variant="outline" className={cn('capitalize', planBadgeClass(user.plan_type))}>
+                              {user.plan_type}
+                            </Badge>
+                            <div className="text-xs text-slate-500 capitalize">{user.subscription_status.replace('_', ' ')}</div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">{user.unique_pdfs_downloaded} PDFs</Badge>
+                            <Badge variant="outline">{user.connected_partners} partner</Badge>
+                            <Badge variant="outline" className={user.open_tickets ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}>
+                              {user.open_tickets} open tickets
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="p-3 text-slate-600">{formatDate(user.joined_at)}</td>
+                        <td className="p-3">
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedUser(user)}>Assist</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>User Dashboard Snapshot</CardTitle>
+                  <CardDescription>{selectedUser.email}</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setSelectedUser(null)}>Close</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Plan</div>
+                  <div className="mt-1 font-semibold text-slate-900 capitalize">{selectedUser.plan_type}</div>
+                  <div className="text-xs text-slate-500 capitalize">{selectedUser.subscription_status.replace('_', ' ')}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">PDF Usage</div>
+                  <div className="mt-1 font-semibold text-slate-900">{selectedUser.total_downloads} downloads</div>
+                  <div className="text-xs text-slate-500">{selectedUser.unique_pdfs_downloaded} unique files</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Partner Sync</div>
+                  <div className="mt-1 font-semibold text-slate-900">{selectedUser.connected_partners} connected</div>
+                  <div className="text-xs text-slate-500">{selectedUser.pending_partners} pending</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="font-medium text-slate-900">Support</div>
+                  <p className="mt-1 text-slate-600">
+                    {selectedUser.open_tickets} open of {selectedUser.total_tickets} total tickets.
+                    Last ticket: {formatDate(selectedUser.last_ticket_at)}.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="font-medium text-slate-900">Billing Assistance</div>
+                  <p className="mt-1 text-slate-600">
+                    Customer ID: {selectedUser.provider_customer_id || 'Not attached'}.
+                    Access ends: {formatDate(selectedUser.current_period_ends_at || selectedUser.trial_ends_at || selectedUser.ends_at)}.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

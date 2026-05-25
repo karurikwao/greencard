@@ -3,7 +3,7 @@
  * Central hub for the app
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -12,7 +12,6 @@ import {
   Calendar, 
   Users, 
   Mic, 
-  FileText, 
   Clock,
   ArrowRight,
   Sparkles,
@@ -23,7 +22,12 @@ import {
   Loader2,
   RefreshCw,
   XCircle,
-  Settings
+  Settings,
+  Download,
+  Trophy,
+  ShieldCheck,
+  MessageSquare,
+  ClipboardCheck
 } from 'lucide-react';
 import { NotificationPanel } from '@/components/notifications';
 import { SupportTicketPanel } from '@/components/support';
@@ -40,10 +44,13 @@ import { usePractice } from '@/lib/practice';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePricing } from '@/hooks/usePricing';
 import { normalizeAllTopics } from '@/lib/practice/normalize';
-import type { PracticeTopic } from '@/lib/practice/types';
+import type { ComfortStatus, PracticeTopic } from '@/lib/practice/types';
 import { getPlanDisplayName, type PlanType } from '@/lib/plans';
 import { createBillingRefundRequest } from '@/lib/refunds/api';
 import { REFUND_REASONS, type RefundReason } from '@/lib/refunds/types';
+import { SecurePDFDownload } from '@/components/paywall/SecurePDFDownload';
+import { apiClient } from '@/lib/apiClient';
+import { compareProgress, getPartnerConnection, getPartnerProgress, syncProgressWithPartner } from '@/lib/practice/partnerSync';
 import { topics } from '@/data/topics';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +67,16 @@ interface DashboardProps {
   canViewAdmin?: boolean;
 }
 
+interface PartnerDashboardSummary {
+  status: 'loading' | 'none' | 'connected';
+  partnerEmail?: string;
+  currentTopic?: string | null;
+  lastUpdated?: string | null;
+  bothNeedPractice: number;
+  aligned: number;
+  partnerNeedsPractice: number;
+}
+
 export function Dashboard({
   onPracticeTopic,
   onStartQuickPractice,
@@ -73,7 +90,7 @@ export function Dashboard({
   canViewAdmin = false,
 }: DashboardProps) {
   const { result: readinessResult } = useReadiness();
-  const { getComfortStatus } = usePractice();
+  const { getComfortStatus, isSavedForLater } = usePractice();
   const {
     entitlements,
     featureAccess,
@@ -95,21 +112,68 @@ export function Dashboard({
   const [refundComments, setRefundComments] = useState('');
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [refundMessage, setRefundMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [partnerSummary, setPartnerSummary] = useState<PartnerDashboardSummary>({
+    status: 'loading',
+    bothNeedPractice: 0,
+    aligned: 0,
+    partnerNeedsPractice: 0,
+  });
   
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
 
-  // Get saved questions count (computed for future use)
-  useMemo(() => {
-    let count = 0;
+  const practiceSummary = useMemo(() => {
+    let reviewed = 0;
+    let understood = 0;
+    let needsPractice = 0;
+    let nervous = 0;
+    let saved = 0;
+
     normalizedTopics.forEach(topic => {
       topic.questions.forEach(q => {
-        if (getComfortStatus(q.id) === 'nervous') {
-          count++;
+        const comfortStatus = getComfortStatus(q.id);
+        if (comfortStatus) {
+          reviewed++;
+        }
+        if (comfortStatus === 'understood') {
+          understood++;
+        }
+        if (comfortStatus === 'needs-practice') {
+          needsPractice++;
+        }
+        if (comfortStatus === 'nervous') {
+          nervous++;
+        }
+        if (isSavedForLater(q.id)) {
+          saved++;
         }
       });
     });
-    return count;
-  }, [normalizedTopics, getComfortStatus]);
+
+    const totalQuestions = normalizedTopics.reduce((sum, topic) => sum + topic.questions.length, 0);
+    return {
+      reviewed,
+      understood,
+      needsPractice,
+      nervous,
+      saved,
+      totalQuestions,
+      reviewedPercent: totalQuestions ? Math.round((reviewed / totalQuestions) * 100) : 0,
+    };
+  }, [normalizedTopics, getComfortStatus, isSavedForLater]);
+
+  const localQuestionStates = useMemo(() => {
+    const states: Record<string, { comfortStatus: ComfortStatus; isSavedForLater: boolean }> = {};
+    normalizedTopics.forEach(topic => {
+      topic.questions.forEach(q => {
+        const comfortStatus = getComfortStatus(q.id);
+        const saved = isSavedForLater(q.id);
+        if (comfortStatus || saved) {
+          states[q.id] = { comfortStatus, isSavedForLater: saved };
+        }
+      });
+    });
+    return states;
+  }, [normalizedTopics, getComfortStatus, isSavedForLater]);
 
   // Get nervous/stress questions
   const stressQuestions = useMemo(() => {
@@ -123,6 +187,55 @@ export function Dashboard({
     });
     return nervous.slice(0, 5);
   }, [normalizedTopics, getComfortStatus]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPartnerSummary = async () => {
+      const connection = await getPartnerConnection();
+      if (!isMounted) return;
+
+      if (!connection) {
+        setPartnerSummary({
+          status: 'none',
+          bothNeedPractice: 0,
+          aligned: 0,
+          partnerNeedsPractice: 0,
+        });
+        return;
+      }
+
+      const { data: user } = await apiClient.auth.getUser();
+      const partnerId = user?.id === connection.partnerId ? connection.userId : connection.partnerId;
+      const partnerProgress = partnerId ? await getPartnerProgress(partnerId) : null;
+      const comparison = partnerProgress
+        ? compareProgress(localQuestionStates, partnerProgress.questionStates)
+        : null;
+
+      if (!isMounted) return;
+
+      setPartnerSummary({
+        status: 'connected',
+        partnerEmail: connection.partnerEmail,
+        currentTopic: partnerProgress?.currentTopic ?? null,
+        lastUpdated: partnerProgress?.lastUpdated ?? null,
+        bothNeedPractice: comparison?.bothNeedPractice.length ?? 0,
+        aligned: comparison?.bothComfortable.length ?? 0,
+        partnerNeedsPractice: comparison?.partnerNeedsPractice.length ?? 0,
+      });
+    };
+
+    loadPartnerSummary();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [localQuestionStates]);
+
+  useEffect(() => {
+    if (!featureAccess.coupleCompare || Object.keys(localQuestionStates).length === 0) return;
+    syncProgressWithPartner(localQuestionStates, lastTopic);
+  }, [featureAccess.coupleCompare, localQuestionStates, lastTopic]);
 
   // Get recommended topics based on readiness
   const recommendedTopics = useMemo(() => {
@@ -265,12 +378,38 @@ export function Dashboard({
     { label: 'AI interview coach', enabled: featureAccess.mockInterview },
     { label: 'Provider/model choice', enabled: hasPremium },
   ];
+  const pdfLibraryTopics = useMemo(
+    () => normalizedTopics.filter(topic => topic.pdfFileName).slice(0, 4),
+    [normalizedTopics]
+  );
+  const achievementTiles = [
+    {
+      label: 'Readiness check',
+      detail: readinessResult ? `${readinessResult.overallScore}% score` : 'Not started',
+      complete: Boolean(readinessResult),
+      icon: ShieldCheck,
+    },
+    {
+      label: 'Practice momentum',
+      detail: `${practiceSummary.reviewed} questions reviewed`,
+      complete: practiceSummary.reviewed > 0,
+      icon: ClipboardCheck,
+    },
+    {
+      label: 'Review list',
+      detail: `${practiceSummary.saved + practiceSummary.needsPractice + practiceSummary.nervous} items to revisit`,
+      complete: practiceSummary.saved > 0 || practiceSummary.needsPractice > 0 || practiceSummary.nervous > 0,
+      icon: Trophy,
+    },
+  ];
+  const cardClass = 'border-slate-200 bg-white shadow-sm shadow-slate-200/60';
+  const surfaceClass = 'rounded-lg border border-slate-200 bg-slate-50/80 p-3';
 
   return (
-    <div className="min-h-screen bg-slate-50/50 pb-20">
+    <div className="min-h-screen bg-slate-100/70 pb-20 text-slate-900">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-white/95 border-b border-slate-200 sticky top-0 z-10 backdrop-blur">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <LayoutDashboard className="w-6 h-6 text-slate-600" />
@@ -286,44 +425,66 @@ export function Dashboard({
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Welcome + Readiness Score */}
-        <Card className="border-slate-200/60">
+        <Card className={cn(cardClass, 'overflow-hidden')}>
           <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div>
-                <h2 className="text-lg font-medium text-slate-800">Welcome back</h2>
-                <p className="text-slate-500">Track your progress and continue preparing</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preparation center</p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Welcome back</h2>
+                <p className="mt-1 text-slate-700">Track progress, premium access, spouse practice, and support from one place.</p>
               </div>
               
               {readinessResult ? (
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="text-sm text-slate-500">Readiness Score</div>
-                    <div className={cn(
-                      'text-2xl font-bold',
-                      readinessResult.overallScore >= 80 ? 'text-emerald-600' :
-                      readinessResult.overallScore >= 60 ? 'text-amber-600' : 'text-rose-600'
-                    )}>
-                      {readinessResult.overallScore}%
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left sm:text-right">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness Score</div>
+                    <div className="flex items-end gap-2 sm:justify-end">
+                      <span className={cn(
+                        'text-3xl font-bold leading-none',
+                        readinessResult.overallScore >= 80 ? 'text-emerald-700' :
+                        readinessResult.overallScore >= 60 ? 'text-amber-700' : 'text-rose-700'
+                      )}>
+                        {readinessResult.overallScore}%
+                      </span>
+                      <span className="text-xs text-slate-500 pb-1">overall</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={onViewProgress}>
+                  <Button variant="outline" onClick={onViewProgress}>
                     Details
                   </Button>
                 </div>
               ) : (
-                <Button onClick={onViewProgress} className="bg-slate-700 hover:bg-slate-800">
+                <Button onClick={onViewProgress} className="bg-slate-900 hover:bg-slate-800">
                   <Sparkles className="w-4 h-4 mr-2" />
                   Take Readiness Check
                 </Button>
               )}
             </div>
+            <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={surfaceClass}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reviewed</p>
+                <p className="mt-1 text-xl font-semibold text-slate-950">{practiceSummary.reviewedPercent}%</p>
+              </div>
+              <div className={surfaceClass}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Comfortable</p>
+                <p className="mt-1 text-xl font-semibold text-emerald-700">{practiceSummary.understood}</p>
+              </div>
+              <div className={surfaceClass}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Needs review</p>
+                <p className="mt-1 text-xl font-semibold text-amber-700">{practiceSummary.needsPractice}</p>
+              </div>
+              <div className={surfaceClass}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saved</p>
+                <p className="mt-1 text-xl font-semibold text-blue-700">{practiceSummary.saved}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* Subscription + Premium Access */}
-        <Card className="border-slate-200/80 bg-white">
+        <Card className={cardClass}>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               <div>
@@ -335,8 +496,8 @@ export function Dashboard({
                   )}
                   Plan & Premium Access
                 </CardTitle>
-                <p className="text-sm text-slate-600 mt-1">
-                  Trial access upgrades to paid access through Stripe Checkout.
+                <p className="text-sm text-slate-700 mt-1">
+                  Checkout, cancellations, lifetime upgrades, refunds, and paid access all resolve through Stripe.
                 </p>
               </div>
               <Badge variant={hasPremium ? 'default' : 'secondary'} className="w-fit capitalize">
@@ -346,11 +507,11 @@ export function Dashboard({
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className={surfaceClass}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</p>
                 <p className="mt-1 font-semibold text-slate-900">{planName}</p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className={surfaceClass}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Access window</p>
                 <p className="mt-1 font-semibold text-slate-900">
                   {hasPremium && currentPlanType === 'lifetime'
@@ -360,7 +521,7 @@ export function Dashboard({
                     : 'Active'}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className={surfaceClass}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment path</p>
                 <p className="mt-1 font-semibold text-slate-900">{hasPremium ? 'Paid account' : 'Trial to paid'}</p>
               </div>
@@ -399,7 +560,7 @@ export function Dashboard({
             )}
 
             <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-              <Button onClick={onUpgrade} className="bg-slate-800 hover:bg-slate-900">
+              <Button onClick={onUpgrade} className="bg-slate-900 hover:bg-slate-800">
                 <CreditCard className="w-4 h-4 mr-2" />
                 {hasPremium ? 'View Billing Options' : 'Upgrade for Premium'}
               </Button>
@@ -464,10 +625,128 @@ export function Dashboard({
           </CardContent>
         </Card>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className={cardClass}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                <Download className="w-4 h-4 text-slate-600" />
+                Purchased PDF Library
+              </CardTitle>
+              <p className="text-sm text-slate-700">
+                Paid accounts can download these study packs directly from the dashboard.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pdfLibraryTopics.map(topic => (
+                <div key={topic.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-950">{topic.title}</p>
+                    <p className="text-xs text-slate-600">{topic.questionCount} questions</p>
+                  </div>
+                  <SecurePDFDownload
+                    pdfFileName={topic.pdfFileName}
+                    pdfTitle={topic.title}
+                    topicId={topic.id}
+                    categoryId={topic.categoryId}
+                    source="direct_link"
+                    size="sm"
+                    label={hasPremium ? 'Download' : 'Premium'}
+                    className="shrink-0"
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className={cardClass}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                <Trophy className="w-4 h-4 text-amber-600" />
+                Achievements
+              </CardTitle>
+              <p className="text-sm text-slate-700">Milestones based on real preparation activity.</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {achievementTiles.map((achievement) => {
+                const Icon = achievement.icon;
+                return (
+                  <div
+                    key={achievement.label}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg border px-3 py-3',
+                      achievement.complete
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                    )}
+                  >
+                    <div className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-lg border bg-white',
+                      achievement.complete ? 'border-emerald-200 text-emerald-700' : 'border-slate-200 text-slate-500'
+                    )}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">{achievement.label}</p>
+                      <p className="text-xs opacity-80">{achievement.detail}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card className={cardClass}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                <MessageSquare className="w-4 h-4 text-slate-600" />
+                Spouse Interaction
+              </CardTitle>
+              <p className="text-sm text-slate-700">Partner sync status and shared review pressure points.</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {partnerSummary.status === 'loading' ? (
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Checking partner activity...
+                </div>
+              ) : partnerSummary.status === 'connected' ? (
+                <>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+                    <p className="text-sm font-semibold text-emerald-900">Connected</p>
+                    <p className="text-xs text-emerald-800">{partnerSummary.partnerEmail}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className={surfaceClass}>
+                      <p className="text-xs text-slate-500">Aligned</p>
+                      <p className="font-semibold text-slate-950">{partnerSummary.aligned}</p>
+                    </div>
+                    <div className={surfaceClass}>
+                      <p className="text-xs text-slate-500">Both review</p>
+                      <p className="font-semibold text-amber-700">{partnerSummary.bothNeedPractice}</p>
+                    </div>
+                    <div className={surfaceClass}>
+                      <p className="text-xs text-slate-500">Partner</p>
+                      <p className="font-semibold text-blue-700">{partnerSummary.partnerNeedsPractice}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-700">
+                  No spouse account is connected yet. Invite them when you are ready to compare progress.
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={onViewCouplePractice} className="w-full">
+                <Users className="w-4 h-4 mr-2" />
+                Open Partner Sync
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Continue Practicing */}
           {lastPracticedTopic && (
-            <Card className="border-slate-200/60">
+            <Card className={cardClass}>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-slate-500" />
@@ -478,7 +757,7 @@ export function Dashboard({
                 <p className="text-slate-700 mb-4">{lastPracticedTopic.title}</p>
                 <Button 
                   onClick={() => onPracticeTopic(lastPracticedTopic)}
-                  className="w-full bg-slate-700 hover:bg-slate-800"
+                  className="w-full bg-slate-900 hover:bg-slate-800"
                 >
                   Resume
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -488,7 +767,7 @@ export function Dashboard({
           )}
 
           {/* Quick Practice */}
-          <Card className="border-slate-200/60">
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-500" />
@@ -496,7 +775,7 @@ export function Dashboard({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-600 mb-4">
+              <p className="text-slate-700 mb-4">
                 10-minute session with important questions from different topics
               </p>
               <Button 
@@ -510,7 +789,7 @@ export function Dashboard({
           </Card>
 
           {/* Recommended Topics */}
-          <Card className="border-slate-200/60">
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-slate-500" />
@@ -526,10 +805,10 @@ export function Dashboard({
                     <button
                       key={topicId}
                       onClick={() => onPracticeTopic(topic)}
-                      className="w-full text-left p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
+                      className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
                     >
-                      <div className="font-medium text-slate-700">{topic.title}</div>
-                      <div className="text-xs text-slate-500">{topic.questionCount} questions</div>
+                      <div className="font-medium text-slate-900">{topic.title}</div>
+                      <div className="text-xs text-slate-600">{topic.questionCount} questions</div>
                     </button>
                   );
                 })}
@@ -538,7 +817,7 @@ export function Dashboard({
           </Card>
 
           {/* Stress Review */}
-          <Card className="border-slate-200/60">
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-500" />
@@ -558,7 +837,7 @@ export function Dashboard({
                   </Button>
                 </div>
               ) : (
-                <p className="text-slate-500 text-center py-4">
+                <p className="text-slate-600 text-center py-4">
                   No questions marked as difficult yet
                 </p>
               )}
@@ -566,7 +845,7 @@ export function Dashboard({
           </Card>
 
           {/* Timeline Progress */}
-          <Card className="border-slate-200/60">
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-slate-500" />
@@ -576,7 +855,7 @@ export function Dashboard({
             <CardContent>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Completion</span>
+                  <span className="text-slate-700">Completion</span>
                   <span className="text-slate-800 font-medium">{timelineCompletion}%</span>
                 </div>
                 <Progress value={timelineCompletion} className="h-2" />
@@ -588,7 +867,7 @@ export function Dashboard({
           </Card>
 
           {/* Couple Practice */}
-          <Card className="border-slate-200/60">
+          <Card className={cardClass}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Users className="w-4 h-4 text-slate-500" />
@@ -596,7 +875,7 @@ export function Dashboard({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-600 mb-4">
+              <p className="text-slate-700 mb-4">
                 Invite your spouse to study together and compare answers
               </p>
               {!featureAccess.coupleCompare && (
@@ -609,7 +888,7 @@ export function Dashboard({
           </Card>
 
           {/* Mock Interview */}
-          <Card className="border-slate-200/60 md:col-span-2">
+          <Card className={cn(cardClass, 'md:col-span-2')}>
             <CardContent className="p-6 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
@@ -617,32 +896,14 @@ export function Dashboard({
                 </div>
                 <div>
                   <h3 className="font-medium text-slate-800">Mock Interview</h3>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-700">
                     Practice with a simulated interview experience
                   </p>
                 </div>
               </div>
-              <Button onClick={onStartMockInterview} className="bg-slate-700 hover:bg-slate-800">
+              <Button onClick={onStartMockInterview} className="bg-slate-900 hover:bg-slate-800">
                 Start Mock Interview
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* Printable Resources */}
-          <Card className="border-slate-200/60 md:col-span-2">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                  <FileText className="w-6 h-6 text-slate-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-slate-800">Printable Resources</h3>
-                  <p className="text-sm text-slate-500">
-                    Download study packs and checklists
-                  </p>
-                </div>
-              </div>
-              <Badge variant="secondary">Premium</Badge>
             </CardContent>
           </Card>
 

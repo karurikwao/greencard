@@ -8,6 +8,7 @@ import db
 
 JWT_SECRET = os.getenv('JWT_SECRET', 'change-this-secret-in-production')
 JWT_EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '168'))
+PASSWORD_RESET_EXPIRY_MINUTES = int(os.getenv('PASSWORD_RESET_EXPIRY_MINUTES', '60'))
 
 
 def hash_password(password: str) -> str:
@@ -26,6 +27,19 @@ def create_token(user_id: str, email: str, role: str = 'user') -> str:
         'role': role,
         'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
         'iat': datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+
+def create_password_reset_token(user_id: str, email: str) -> str:
+    issued_at = datetime.now(timezone.utc)
+    payload = {
+        'sub': user_id,
+        'email': email,
+        'role': 'password_reset',
+        'type': 'password_reset',
+        'exp': issued_at + timedelta(minutes=PASSWORD_RESET_EXPIRY_MINUTES),
+        'iat': issued_at,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 

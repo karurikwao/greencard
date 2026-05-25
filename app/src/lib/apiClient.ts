@@ -301,6 +301,7 @@ export const apiClient = {
       'support-ai-assist': '/api/ai/support-assist',
       'process-refund': '/api/process-refund',
       'trigger-coolify-rebuild': '/api/rpc/trigger-rebuild',
+      'admin-users': '/api/admin/users',
     };
     const route = routeMap[name] || `/api/invoke/${name}`;
     return request<T>(route, {

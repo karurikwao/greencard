@@ -1,12 +1,13 @@
 import os
 import uuid
 import smtplib
+from urllib.parse import urlencode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Blueprint, request, jsonify
 from auth import (
     hash_password, verify_password, create_token, create_refresh_token,
-    decode_token, require_auth, require_admin, optional_auth
+    create_password_reset_token, decode_token, require_auth, require_admin, optional_auth
 )
 import db
 from email_service import send_password_reset_message, send_welcome_email
@@ -14,7 +15,7 @@ from email_service import send_password_reset_message, send_welcome_email
 auth_bp = Blueprint('auth', __name__)
 
 
-def send_password_reset_email(email: str, reset_token: str):
+def send_password_reset_email(email: str, reset_token: str, redirect_to: str | None = None):
     smtp_host = os.getenv('SMTP_HOST')
     smtp_port = int(os.getenv('SMTP_PORT', '587'))
     smtp_user = os.getenv('SMTP_USER')
@@ -22,7 +23,8 @@ def send_password_reset_email(email: str, reset_token: str):
     email_from = os.getenv('EMAIL_FROM', 'noreply@greencardprep.com')
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
-    reset_url = f"{frontend_url}/reset-password?token={reset_token}"
+    reset_base = (redirect_to or f"{frontend_url}/reset-password").split('?', 1)[0].rstrip('/')
+    reset_url = f"{reset_base}?{urlencode({'token': reset_token})}"
 
     if os.getenv('RESEND_API_KEY'):
         return send_password_reset_message(email, reset_url).get('success', False)
@@ -227,8 +229,8 @@ def reset_password():
     if not user:
         return jsonify({'message': 'If an account exists with this email, a reset link will be sent'}), 200
 
-    reset_token = create_token(str(user['id']), email, 'password_reset')
-    send_password_reset_email(email, reset_token)
+    reset_token = create_password_reset_token(str(user['id']), email)
+    send_password_reset_email(email, reset_token, data.get('redirectTo'))
 
     return jsonify({'message': 'If an account exists with this email, a reset link will be sent'})
 
@@ -250,9 +252,20 @@ def update_password_with_token():
     if not payload:
         return jsonify({'error': 'Invalid or expired reset token'}), 400
 
+    if payload.get('type') != 'password_reset' or payload.get('role') != 'password_reset':
+        return jsonify({'error': 'Invalid reset token'}), 400
+
     user_id = payload.get('sub')
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
     password_hash = hash_password(new_password)
-    db.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+    updated = db.execute_returning(
+        "UPDATE users SET password_hash = %s, updated_at = now() WHERE id = %s RETURNING id",
+        (password_hash, user_id)
+    )
+    if not updated:
+        return jsonify({'error': 'Invalid reset token'}), 400
 
     return jsonify({'message': 'Password updated successfully'})
 
