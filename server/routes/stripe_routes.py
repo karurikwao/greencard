@@ -671,7 +671,7 @@ def request_refund():
     additional_comments = (data.get('additionalComments') or '').strip()[:2000]
 
     sub = db.query_one(
-        """SELECT id, user_id, plan_type, status, provider, provider_customer_id,
+        """SELECT user_id, plan_type, status, provider, provider_customer_id,
                   provider_subscription_id, created_at
            FROM user_subscriptions WHERE user_id = %s""",
         (user['id'],),
