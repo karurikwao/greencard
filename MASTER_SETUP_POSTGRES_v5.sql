@@ -312,9 +312,20 @@ BEGIN
         trial_starts_at = COALESCE(EXCLUDED.trial_starts_at, user_subscriptions.trial_starts_at),
         trial_ends_at = COALESCE(EXCLUDED.trial_ends_at, user_subscriptions.trial_ends_at),
         current_period_starts_at = COALESCE(EXCLUDED.current_period_starts_at, user_subscriptions.current_period_starts_at),
-        current_period_ends_at = COALESCE(EXCLUDED.current_period_ends_at, user_subscriptions.current_period_ends_at),
+        current_period_ends_at = CASE
+            WHEN EXCLUDED.plan_type = 'lifetime' THEN NULL
+            ELSE COALESCE(EXCLUDED.current_period_ends_at, user_subscriptions.current_period_ends_at)
+        END,
+        canceled_at = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE user_subscriptions.canceled_at END,
+        ends_at = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE user_subscriptions.ends_at END,
+        payment_failed_at = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE user_subscriptions.payment_failed_at END,
+        payment_failure_count = CASE WHEN EXCLUDED.status = 'active' THEN 0 ELSE user_subscriptions.payment_failure_count END,
         lifetime_granted_at = COALESCE(EXCLUDED.lifetime_granted_at, user_subscriptions.lifetime_granted_at),
-        interview_pass_ends_at = COALESCE(EXCLUDED.interview_pass_ends_at, user_subscriptions.interview_pass_ends_at),
+        interview_pass_ends_at = CASE
+            WHEN EXCLUDED.plan_type = 'interviewPass' THEN COALESCE(EXCLUDED.interview_pass_ends_at, user_subscriptions.interview_pass_ends_at)
+            WHEN EXCLUDED.plan_type = 'lifetime' THEN NULL
+            ELSE user_subscriptions.interview_pass_ends_at
+        END,
         metadata = user_subscriptions.metadata || EXCLUDED.metadata,
         updated_at = v_now
     RETURNING * INTO v_sub;

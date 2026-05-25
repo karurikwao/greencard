@@ -128,12 +128,15 @@ export {
   redirectToCheckout,
   createCustomerPortalSession,
   redirectToCustomerPortal,
+  cancelSubscription,
+  resumeSubscription,
   isCheckoutSuccess,
   isCheckoutCanceled,
   getCheckoutSessionId,
   type CheckoutSessionResult,
   type CheckoutConfirmationResult,
   type PortalSessionResult,
+  type BillingActionResult,
 } from './stripe';
 
 // ============================================================================

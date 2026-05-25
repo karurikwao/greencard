@@ -29,7 +29,9 @@ import {
   getSubscriptionDisplayState,
   hasPremiumAccess,
   startCheckout,
-  openManageSubscription
+  openManageSubscription,
+  cancelSubscription,
+  resumeSubscription
 } from '@/lib/subscriptions';
 import { supabase } from '@/lib/supabase';
 // Import new entitlement system
@@ -397,6 +399,29 @@ export function usePricing() {
       cancelUrl: `${window.location.origin}/pricing?checkout=canceled`,
     });
   }, []);
+
+  const upgradeToLifetime = useCallback(async () => {
+    return startCheckout('lifetime', {
+      successUrl: `${window.location.origin}/dashboard?checkout=success&plan=lifetime`,
+      cancelUrl: `${window.location.origin}/dashboard?checkout=canceled`,
+    });
+  }, []);
+
+  const cancelPlanRenewal = useCallback(async () => {
+    const result = await cancelSubscription();
+    if (result.success) {
+      await refreshSubscription();
+    }
+    return result;
+  }, [refreshSubscription]);
+
+  const resumePlanRenewal = useCallback(async () => {
+    const result = await resumeSubscription();
+    if (result.success) {
+      await refreshSubscription();
+    }
+    return result;
+  }, [refreshSubscription]);
   
   // Open subscription management
   const manageSubscription = useCallback(async () => {
@@ -483,6 +508,9 @@ export function usePricing() {
     // Actions
     upgradePlan,
     startPlanCheckout,
+    upgradeToLifetime,
+    cancelPlanRenewal,
+    resumePlanRenewal,
     manageSubscription,
     refreshSubscription,
     

@@ -41,6 +41,15 @@ export interface CheckoutConfirmationResult {
   code?: string;
 }
 
+export interface BillingActionResult {
+  success: boolean;
+  status?: string;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEndsAt?: string | null;
+  error?: string;
+  code?: string;
+}
+
 // ============================================================================
 // CHECKOUT
 // ============================================================================
@@ -226,6 +235,70 @@ export async function redirectToCustomerPortal(): Promise<boolean> {
   }
 
   return false;
+}
+
+// ============================================================================
+// BILLING ACTIONS
+// ============================================================================
+
+export async function cancelSubscription(): Promise<BillingActionResult> {
+  try {
+    const { data, error } = await apiClient.invokeFunction<BillingActionResult>(
+      'cancel-subscription',
+      {}
+    );
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message || 'Failed to cancel renewal',
+        code: error.code,
+      };
+    }
+
+    return {
+      success: Boolean(data?.success),
+      status: data?.status,
+      cancelAtPeriodEnd: data?.cancelAtPeriodEnd,
+      currentPeriodEndsAt: data?.currentPeriodEndsAt,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+      code: 'UNKNOWN_ERROR',
+    };
+  }
+}
+
+export async function resumeSubscription(): Promise<BillingActionResult> {
+  try {
+    const { data, error } = await apiClient.invokeFunction<BillingActionResult>(
+      'resume-subscription',
+      {}
+    );
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message || 'Failed to resume renewal',
+        code: error.code,
+      };
+    }
+
+    return {
+      success: Boolean(data?.success),
+      status: data?.status,
+      cancelAtPeriodEnd: data?.cancelAtPeriodEnd,
+      currentPeriodEndsAt: data?.currentPeriodEndsAt,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+      code: 'UNKNOWN_ERROR',
+    };
+  }
 }
 
 // ============================================================================

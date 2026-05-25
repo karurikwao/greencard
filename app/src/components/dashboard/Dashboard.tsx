@@ -3,7 +3,7 @@
  * Central hub for the app
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -20,6 +20,9 @@ import {
   Lock,
   CheckCircle2,
   CreditCard,
+  Loader2,
+  RefreshCw,
+  XCircle,
   Settings
 } from 'lucide-react';
 import { NotificationPanel } from '@/components/notifications';
@@ -73,9 +76,14 @@ export function Dashboard({
     passDaysLeft,
     hasPremium,
     isLoadingServer,
+    upgradeToLifetime,
+    cancelPlanRenewal,
+    resumePlanRenewal,
   } = usePricing();
   const [lastTopic] = useLocalStorage<string | null>('interview-last-topic', null);
   const [milestones] = useLocalStorage('interview-timeline-v2', []);
+  const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | null>(null);
+  const [billingMessage, setBillingMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
 
@@ -157,11 +165,67 @@ export function Dashboard({
   const currentPlanType = (entitlements?.subscription.planType || currentPlan.id) as PlanType;
   const planName = getPlanDisplayName(currentPlanType);
   const planStatusLabel = entitlements?.subscription.effectiveStatus?.replace('_', ' ') || 'trialing';
+  const subscriptionStatus = entitlements?.subscription.status || 'trialing';
   const daysRemaining = currentPlanType === 'trial'
     ? trialDaysLeft
     : currentPlanType === 'interviewPass'
     ? passDaysLeft
     : entitlements?.subscription.daysRemaining;
+  const canUpgradeToLifetime = hasPremium && currentPlanType !== 'lifetime';
+  const canCancelMonthly = currentPlanType === 'monthly' && subscriptionStatus === 'active';
+  const canResumeMonthly = currentPlanType === 'monthly' && subscriptionStatus === 'canceled';
+  const formatBillingDate = (date: string | null | undefined) => {
+    if (!date) return null;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date(date));
+    } catch {
+      return null;
+    }
+  };
+  const runCancelRenewal = async () => {
+    const confirmed = window.confirm('Cancel monthly renewal? Premium access stays active until the current billing period ends.');
+    if (!confirmed) return;
+
+    setBillingAction('cancel');
+    setBillingMessage(null);
+    const result = await cancelPlanRenewal();
+    if (result.success) {
+      const endDate = formatBillingDate(result.currentPeriodEndsAt);
+      setBillingMessage({
+        tone: 'success',
+        text: endDate
+          ? `Renewal canceled. Access remains active until ${endDate}.`
+          : 'Renewal canceled. Access remains active until the current billing period ends.',
+      });
+    } else {
+      setBillingMessage({ tone: 'error', text: result.error || 'Unable to cancel renewal.' });
+    }
+    setBillingAction(null);
+  };
+  const runResumeRenewal = async () => {
+    setBillingAction('resume');
+    setBillingMessage(null);
+    const result = await resumePlanRenewal();
+    if (result.success) {
+      setBillingMessage({ tone: 'success', text: 'Monthly renewal resumed.' });
+    } else {
+      setBillingMessage({ tone: 'error', text: result.error || 'Unable to resume renewal.' });
+    }
+    setBillingAction(null);
+  };
+  const runLifetimeUpgrade = async () => {
+    setBillingAction('lifetime');
+    setBillingMessage(null);
+    const result = await upgradeToLifetime();
+    if (!result.success) {
+      setBillingMessage({ tone: 'error', text: result.error || 'Unable to start lifetime checkout.' });
+      setBillingAction(null);
+    }
+  };
   const featureTiles = [
     { label: 'Premium PDFs', enabled: featureAccess.pdfDownloads },
     { label: 'Partner sync', enabled: featureAccess.coupleCompare },
@@ -290,11 +354,65 @@ export function Dashboard({
               ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            {billingMessage && (
+              <div className={cn(
+                'rounded-lg border px-3 py-2 text-sm',
+                billingMessage.tone === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              )}>
+                {billingMessage.text}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
               <Button onClick={onUpgrade} className="bg-slate-800 hover:bg-slate-900">
                 <CreditCard className="w-4 h-4 mr-2" />
                 {hasPremium ? 'View Billing Options' : 'Upgrade for Premium'}
               </Button>
+              {canUpgradeToLifetime && (
+                <Button
+                  variant="outline"
+                  onClick={runLifetimeUpgrade}
+                  disabled={billingAction !== null}
+                >
+                  {billingAction === 'lifetime' ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Crown className="w-4 h-4 mr-2" />
+                  )}
+                  Upgrade to Lifetime
+                </Button>
+              )}
+              {canCancelMonthly && (
+                <Button
+                  variant="outline"
+                  onClick={runCancelRenewal}
+                  disabled={billingAction !== null}
+                  className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                >
+                  {billingAction === 'cancel' ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <XCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Cancel monthly renewal
+                </Button>
+              )}
+              {canResumeMonthly && (
+                <Button
+                  variant="outline"
+                  onClick={runResumeRenewal}
+                  disabled={billingAction !== null}
+                >
+                  {billingAction === 'resume' ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  Resume monthly renewal
+                </Button>
+              )}
               <Button variant="outline" onClick={onViewCouplePractice}>
                 <Users className="w-4 h-4 mr-2" />
                 Open Partner Sync

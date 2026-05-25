@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 import stripe
 from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
@@ -28,6 +29,59 @@ PLAN_LABELS = {
     'lifetime': 'InterviewReady Lifetime Access',
     'interviewPass': 'InterviewReady 90-Day Interview Pass',
 }
+
+
+def _is_stripe_subscription_id(value):
+    return bool(value and str(value).startswith('sub_'))
+
+
+def _iso_from_timestamp(timestamp):
+    if not timestamp:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def _as_iso(value):
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return value
+
+
+def _retrieve_subscription_period_end(subscription_id):
+    if not _is_stripe_subscription_id(subscription_id):
+        return None
+    try:
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        return _iso_from_timestamp(subscription.get('current_period_end'))
+    except stripe.error.StripeError:
+        return None
+
+
+def _schedule_subscription_cancellation(subscription_id):
+    if not _is_stripe_subscription_id(subscription_id):
+        return None
+    subscription = stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
+    return _iso_from_timestamp(subscription.get('current_period_end'))
+
+
+def _resume_subscription_renewal(subscription_id):
+    if not _is_stripe_subscription_id(subscription_id):
+        return None
+    subscription = stripe.Subscription.modify(subscription_id, cancel_at_period_end=False)
+    return _iso_from_timestamp(subscription.get('current_period_end'))
+
+
+def _metadata_json(updates):
+    return json.dumps({k: v for k, v in updates.items() if v is not None})
+
+
+def _subscription_event_matches_current(sub, incoming_subscription_id):
+    if not sub or not incoming_subscription_id:
+        return False
+    if sub.get('plan_type') == 'lifetime':
+        return False
+    current_subscription_id = sub.get('provider_subscription_id')
+    return not current_subscription_id or current_subscription_id == incoming_subscription_id
 
 
 def _refresh_stripe_key():
@@ -127,10 +181,25 @@ def create_checkout_session():
             }
 
     existing_sub = db.query_one(
-        "SELECT provider_customer_id FROM user_subscriptions WHERE user_id = %s",
+        """SELECT plan_type, status, provider_customer_id, provider_subscription_id
+           FROM user_subscriptions WHERE user_id = %s""",
         (user['id'],)
     )
     customer_id = existing_sub['provider_customer_id'] if existing_sub else None
+    existing_plan = existing_sub.get('plan_type') if existing_sub else None
+    existing_status = existing_sub.get('status') if existing_sub else None
+    existing_provider_ref = existing_sub.get('provider_subscription_id') if existing_sub else None
+
+    if existing_plan == 'lifetime' and existing_status == 'active':
+        return jsonify({
+            'error': 'Lifetime access is already active for this account.',
+            'code': 'ALREADY_LIFETIME',
+        }), 409
+    if existing_plan == 'monthly' and existing_status in ('active', 'canceled') and plan_type == 'monthly':
+        return jsonify({
+            'error': 'A monthly subscription is already attached to this account.',
+            'code': 'MONTHLY_ALREADY_EXISTS',
+        }), 409
 
     if not customer_id:
         try:
@@ -176,6 +245,15 @@ def create_checkout_session():
             'app_source': 'interview_ready',
         }
     }
+
+    if (
+        plan_type == 'lifetime'
+        and existing_plan in ('monthly', 'interviewPass')
+        and existing_status in ('active', 'canceled', 'past_due', 'grace_period')
+    ):
+        session_params['metadata']['upgrade_from_plan'] = existing_plan
+        if existing_provider_ref:
+            session_params['metadata']['upgrade_from_provider_ref'] = existing_provider_ref
 
     if promo_validation and promo_validation.get('valid') and promo_validation.get('code'):
         session_params['metadata']['promo_code'] = promo_validation['code']
@@ -279,6 +357,107 @@ def create_customer_portal():
         return jsonify({'error': f'Failed to create portal session: {str(e)}'}), 500
 
 
+@stripe_bp.route('/cancel-subscription', methods=['POST'])
+@require_auth
+def cancel_subscription():
+    _refresh_stripe_key()
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    user = request.current_user
+    sub = db.query_one(
+        """SELECT user_id, plan_type, status, provider_subscription_id, current_period_ends_at
+           FROM user_subscriptions WHERE user_id = %s""",
+        (user['id'],)
+    )
+    if not sub:
+        return jsonify({'error': 'No subscription found', 'code': 'SUBSCRIPTION_NOT_FOUND'}), 404
+    if sub.get('plan_type') != 'monthly':
+        return jsonify({'error': 'Only monthly subscriptions can be canceled.', 'code': 'NOT_CANCELABLE'}), 400
+
+    subscription_id = sub.get('provider_subscription_id')
+    if not _is_stripe_subscription_id(subscription_id):
+        return jsonify({'error': 'No active Stripe subscription found.', 'code': 'STRIPE_SUBSCRIPTION_NOT_FOUND'}), 404
+
+    if sub.get('status') == 'canceled':
+        return jsonify({
+            'success': True,
+            'status': 'canceled',
+            'cancelAtPeriodEnd': True,
+            'currentPeriodEndsAt': _as_iso(sub.get('current_period_ends_at')),
+        })
+
+    try:
+        period_end = _schedule_subscription_cancellation(subscription_id) or _as_iso(sub.get('current_period_ends_at'))
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Unable to cancel renewal: {str(e)}', 'code': 'STRIPE_CANCEL_FAILED'}), 502
+
+    db.execute(
+        """UPDATE user_subscriptions
+           SET status = 'canceled',
+               canceled_at = COALESCE(canceled_at, now()),
+               current_period_ends_at = COALESCE(%s, current_period_ends_at),
+               metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+               updated_at = now()
+           WHERE user_id = %s""",
+        (period_end, _metadata_json({'cancel_at_period_end': True, 'canceled_by': 'user'}), user['id'])
+    )
+
+    return jsonify({
+        'success': True,
+        'status': 'canceled',
+        'cancelAtPeriodEnd': True,
+        'currentPeriodEndsAt': period_end,
+    })
+
+
+@stripe_bp.route('/resume-subscription', methods=['POST'])
+@require_auth
+def resume_subscription():
+    _refresh_stripe_key()
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    user = request.current_user
+    sub = db.query_one(
+        """SELECT user_id, plan_type, status, provider_subscription_id, current_period_ends_at
+           FROM user_subscriptions WHERE user_id = %s""",
+        (user['id'],)
+    )
+    if not sub:
+        return jsonify({'error': 'No subscription found', 'code': 'SUBSCRIPTION_NOT_FOUND'}), 404
+    if sub.get('plan_type') != 'monthly':
+        return jsonify({'error': 'Only monthly subscriptions can be resumed.', 'code': 'NOT_RESUMABLE'}), 400
+
+    subscription_id = sub.get('provider_subscription_id')
+    if not _is_stripe_subscription_id(subscription_id):
+        return jsonify({'error': 'No Stripe subscription found.', 'code': 'STRIPE_SUBSCRIPTION_NOT_FOUND'}), 404
+
+    try:
+        period_end = _resume_subscription_renewal(subscription_id) or _as_iso(sub.get('current_period_ends_at'))
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Unable to resume renewal: {str(e)}', 'code': 'STRIPE_RESUME_FAILED'}), 502
+
+    db.execute(
+        """UPDATE user_subscriptions
+           SET status = 'active',
+               canceled_at = NULL,
+               ends_at = NULL,
+               current_period_ends_at = COALESCE(%s, current_period_ends_at),
+               metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+               updated_at = now()
+           WHERE user_id = %s""",
+        (period_end, _metadata_json({'cancel_at_period_end': False, 'resumed_by': 'user'}), user['id'])
+    )
+
+    return jsonify({
+        'success': True,
+        'status': 'active',
+        'cancelAtPeriodEnd': False,
+        'currentPeriodEndsAt': period_end,
+    })
+
+
 @stripe_bp.route('/webhook', methods=['POST'])
 def stripe_webhook():
     _refresh_stripe_key()
@@ -334,7 +513,7 @@ def stripe_webhook():
 
 
 def _handle_checkout_completed(session_data):
-    metadata = session_data.get('metadata', {})
+    metadata = session_data.get('metadata', {}) or {}
     user_id = metadata.get('user_id')
     plan_type = metadata.get('plan_type')
     customer_id = session_data.get('customer')
@@ -345,9 +524,6 @@ def _handle_checkout_completed(session_data):
 
     if not user_id or not plan_type:
         raise ValueError('Missing user_id or plan_type in session metadata')
-
-    import json as json_mod
-    now_iso = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
 
     existing_subscription = db.query_one(
         "SELECT plan_type, status, provider_subscription_id FROM user_subscriptions WHERE user_id = %s",
@@ -360,24 +536,58 @@ def _handle_checkout_completed(session_data):
         or (provider_ref and existing_subscription.get('provider_subscription_id') != provider_ref)
     )
 
-    meta = {}
+    current_period_ends_at = None
+    if plan_type == 'monthly' and subscription_id:
+        current_period_ends_at = _retrieve_subscription_period_end(subscription_id)
+    elif plan_type == 'interviewPass':
+        current_period_ends_at = datetime.now(timezone.utc) + timedelta(days=90)
+
+    meta = {'checkout_session_id': session_data.get('id')}
     if promo_code:
         meta['promo_code'] = promo_code
         meta['discount_percent'] = int(metadata.get('discount_percent', 0))
 
+    if plan_type == 'lifetime' and existing_subscription and existing_subscription.get('plan_type') != 'lifetime':
+        previous_provider_ref = existing_subscription.get('provider_subscription_id')
+        meta['upgraded_from_plan'] = metadata.get('upgrade_from_plan') or existing_subscription.get('plan_type')
+        if previous_provider_ref:
+            meta['upgraded_from_provider_ref'] = previous_provider_ref
+        if _is_stripe_subscription_id(previous_provider_ref):
+            try:
+                previous_period_end = _schedule_subscription_cancellation(previous_provider_ref)
+                meta['previous_subscription_cancel_at_period_end'] = True
+                if previous_period_end:
+                    meta['previous_subscription_access_ends_at'] = previous_period_end
+            except stripe.error.StripeError as e:
+                meta['previous_subscription_cancel_error'] = str(e)[:240]
+                print(f"Failed to schedule prior Stripe subscription cancellation for user {user_id}: {e}")
+
     db.call_function('create_or_update_subscription', (
         user_id, plan_type, 'active', 'stripe', customer_id,
-        subscription_id or payment_intent_id,
+        provider_ref,
         None,
-        __import__('datetime').datetime.now(__import__('datetime').timezone.utc) + __import__('datetime').timedelta(days=90) if plan_type == 'interviewPass' else None,
-        json_mod.dumps(meta)
+        current_period_ends_at,
+        json.dumps(meta)
     ))
+
+    if plan_type == 'lifetime':
+        db.execute(
+            """UPDATE user_subscriptions
+               SET current_period_ends_at = NULL,
+                   canceled_at = NULL,
+                   ends_at = NULL,
+                   payment_failed_at = NULL,
+                   payment_failure_count = 0,
+                   updated_at = now()
+               WHERE user_id = %s""",
+            (user_id,)
+        )
 
     if promo_code:
         try:
             db.call_function('record_referral_event', (
                 user_id, promo_code, 'stripe_checkout', None, 'purchase',
-                json_mod.dumps({'plan_type': plan_type, 'session_id': session_data.get('id')})
+                json.dumps({'plan_type': plan_type, 'session_id': session_data.get('id')})
             ))
         except Exception:
             pass
@@ -403,10 +613,11 @@ def _handle_subscription_updated(subscription_data):
     cancel_at_end = subscription_data.get('cancel_at_period_end', False)
 
     sub = db.query_one(
-        "SELECT user_id, status FROM user_subscriptions WHERE provider_customer_id = %s",
+        """SELECT user_id, plan_type, status, provider_subscription_id
+           FROM user_subscriptions WHERE provider_customer_id = %s""",
         (customer_id,)
     )
-    if not sub:
+    if not _subscription_event_matches_current(sub, subscription_id):
         return
 
     status_map = {
@@ -427,18 +638,23 @@ def _handle_subscription_updated(subscription_data):
 
     db.execute(
         """UPDATE user_subscriptions SET status = %s, provider_subscription_id = %s,
-           current_period_ends_at = %s, updated_at = now() WHERE user_id = %s""",
-        (our_status, subscription_id, period_end_dt, sub['user_id'])
+           current_period_ends_at = %s,
+           canceled_at = CASE WHEN %s THEN COALESCE(canceled_at, now()) ELSE NULL END,
+           ends_at = CASE WHEN %s THEN ends_at ELSE NULL END,
+           updated_at = now() WHERE user_id = %s""",
+        (our_status, subscription_id, period_end_dt, cancel_at_end, cancel_at_end, sub['user_id'])
     )
 
 
 def _handle_subscription_deleted(subscription_data):
     customer_id = subscription_data.get('customer')
+    subscription_id = subscription_data.get('id')
     sub = db.query_one(
-        "SELECT user_id FROM user_subscriptions WHERE provider_customer_id = %s",
+        """SELECT user_id, plan_type, provider_subscription_id
+           FROM user_subscriptions WHERE provider_customer_id = %s""",
         (customer_id,)
     )
-    if not sub:
+    if not _subscription_event_matches_current(sub, subscription_id):
         return
 
     db.execute(
@@ -454,10 +670,11 @@ def _handle_invoice_paid(invoice_data):
         return
 
     sub = db.query_one(
-        "SELECT user_id FROM user_subscriptions WHERE provider_customer_id = %s",
+        """SELECT user_id, plan_type, provider_subscription_id
+           FROM user_subscriptions WHERE provider_customer_id = %s""",
         (customer_id,)
     )
-    if not sub:
+    if not _subscription_event_matches_current(sub, subscription_id):
         return
 
     period_end = invoice_data.get('period_end')
@@ -468,7 +685,13 @@ def _handle_invoice_paid(invoice_data):
         period_end_dt = None
 
     db.execute(
-        """UPDATE user_subscriptions SET status = 'active', current_period_ends_at = %s, updated_at = now()
+        """UPDATE user_subscriptions SET status = 'active',
+           current_period_ends_at = %s,
+           canceled_at = NULL,
+           ends_at = NULL,
+           payment_failed_at = NULL,
+           payment_failure_count = 0,
+           updated_at = now()
            WHERE user_id = %s""",
         (period_end_dt, sub['user_id'])
     )
@@ -476,14 +699,24 @@ def _handle_invoice_paid(invoice_data):
 
 def _handle_payment_failed(invoice_data):
     customer_id = invoice_data.get('customer')
+    subscription_id = invoice_data.get('subscription')
+    if not subscription_id:
+        return
+
     sub = db.query_one(
-        "SELECT user_id FROM user_subscriptions WHERE provider_customer_id = %s",
+        """SELECT user_id, plan_type, provider_subscription_id
+           FROM user_subscriptions WHERE provider_customer_id = %s""",
         (customer_id,)
     )
-    if not sub:
+    if not _subscription_event_matches_current(sub, subscription_id):
         return
 
     db.execute(
-        "UPDATE user_subscriptions SET status = 'past_due', payment_failed_at = now(), updated_at = now() WHERE user_id = %s",
+        """UPDATE user_subscriptions
+           SET status = 'past_due',
+               payment_failed_at = now(),
+               payment_failure_count = COALESCE(payment_failure_count, 0) + 1,
+               updated_at = now()
+           WHERE user_id = %s""",
         (sub['user_id'],)
     )

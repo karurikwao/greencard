@@ -293,6 +293,8 @@ export const apiClient = {
       'create-checkout-session': '/api/stripe/create-checkout-session',
       'confirm-checkout-session': '/api/stripe/confirm-checkout-session',
       'create-customer-portal': '/api/stripe/create-customer-portal',
+      'cancel-subscription': '/api/stripe/cancel-subscription',
+      'resume-subscription': '/api/stripe/resume-subscription',
       'generate-pdf-signed-url': '/api/pdf/generate-signed-url',
       'ai-interview-turn': '/api/ai/interview-turn',
       'process-refund': '/api/rpc/process-refund',
