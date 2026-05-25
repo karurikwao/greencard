@@ -1,0 +1,371 @@
+import os
+import uuid
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from flask import Blueprint, request, jsonify
+from auth import (
+    hash_password, verify_password, create_token, create_refresh_token,
+    decode_token, require_auth, require_admin, optional_auth
+)
+import db
+
+auth_bp = Blueprint('auth', __name__)
+
+
+def send_password_reset_email(email: str, reset_token: str):
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    email_from = os.getenv('EMAIL_FROM', 'noreply@greencardprep.com')
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+    if not smtp_host or not smtp_user:
+        print(f"[DEV] Password reset for {email}: {frontend_url}/reset-password?token={reset_token}")
+        return True
+
+    reset_url = f"{frontend_url}/reset-password?token={reset_token}"
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = 'Reset Your Password - GreenCardPrep'
+    msg['From'] = email_from
+    msg['To'] = email
+
+    text = f"Click the link to reset your password: {reset_url}\nThis link expires in 1 hour."
+    html = f"""<html><body><h2>Reset Your Password</h2>
+    <p>Click the link below to reset your password:</p>
+    <a href="{reset_url}">Reset Password</a>
+    <p>This link expires in 1 hour.</p></body></html>"""
+
+    msg.attach(MIMEText(text, 'plain'))
+    msg.attach(MIMEText(html, 'html'))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(email_from, email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+
+
+@auth_bp.route('/signup', methods=['POST'])
+def signup():
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    first_name = data.get('first_name', data.get('metadata', {}).get('first_name'))
+    last_name = data.get('last_name', data.get('metadata', {}).get('last_name'))
+    promo_code = data.get('promo_code', data.get('metadata', {}).get('promo_code'))
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    existing = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
+    if existing:
+        return jsonify({'error': 'User already registered', 'code': 'USER_EXISTS'}), 409
+
+    user_id = str(uuid.uuid4())
+    password_hash = hash_password(password)
+
+    with db.get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO users (id, email, password_hash) VALUES (%s, %s, %s)",
+            (user_id, email, password_hash)
+        )
+        cur.execute(
+            """INSERT INTO user_profiles (user_id, email, first_name, last_name, display_name, referral_code, role, is_active)
+               VALUES (%s, %s, %s, %s, %s, %s, 'user', true)""",
+            (
+                user_id, email, first_name, last_name,
+                (f"{first_name} {last_name}".strip() if first_name and last_name else email),
+                promo_code
+            )
+        )
+        cur.execute(
+            """INSERT INTO user_subscriptions (user_id, plan_type, status, trial_starts_at, trial_ends_at)
+               VALUES (%s, 'trial', 'trialing', now(), now() + INTERVAL '7 days')""",
+            (user_id,)
+        )
+        conn.commit()
+        cur.close()
+
+    token = create_token(user_id, email, 'user')
+    refresh = create_refresh_token(user_id)
+
+    return jsonify({
+        'user': {'id': user_id, 'email': email},
+        'accessToken': token,
+        'refreshToken': refresh,
+        'access_token': token,
+        'refresh_token': refresh,
+        'token_type': 'bearer',
+        'expires_in': int(os.getenv('JWT_EXPIRY_HOURS', '168')) * 3600,
+    }), 201
+
+
+@auth_bp.route('/signin', methods=['POST'])
+def signin():
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    user = db.query_one("SELECT id, email, password_hash FROM users WHERE email = %s", (email,))
+    if not user or not verify_password(password, user['password_hash']):
+        return jsonify({'error': 'Invalid login credentials'}), 401
+
+    if not user.get('password_hash'):
+        return jsonify({'error': 'Please use social login or reset your password'}), 401
+
+    profile = db.query_one("SELECT role FROM user_profiles WHERE user_id = %s", (user['id'],))
+    role = profile['role'] if profile else 'user'
+
+    token = create_token(str(user['id']), user['email'], role)
+    refresh = create_refresh_token(str(user['id']))
+
+    return jsonify({
+        'user': {'id': str(user['id']), 'email': user['email']},
+        'accessToken': token,
+        'refreshToken': refresh,
+        'access_token': token,
+        'refresh_token': refresh,
+        'token_type': 'bearer',
+        'expires_in': int(os.getenv('JWT_EXPIRY_HOURS', '168')) * 3600,
+    })
+
+
+@auth_bp.route('/signout', methods=['POST'])
+@require_auth
+def signout():
+    return jsonify({'message': 'Signed out successfully'})
+
+
+@auth_bp.route('/user', methods=['GET'])
+@require_auth
+def get_user():
+    user = request.current_user
+    profile = user.get('profile', {})
+
+    return jsonify({
+        'id': user['id'],
+        'email': user['email'],
+        'role': user['role'],
+        'first_name': profile.get('first_name'),
+        'last_name': profile.get('last_name'),
+        'display_name': profile.get('display_name'),
+        'referral_code': profile.get('referral_code'),
+        'is_active': profile.get('is_active', True),
+    })
+
+
+@auth_bp.route('/user', methods=['PUT'])
+@require_auth
+def update_user():
+    user = request.current_user
+    data = request.get_json()
+
+    updates = {}
+    if 'password' in data:
+        password_hash = hash_password(data['password'])
+        db.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user['id']))
+
+    if 'email' in data:
+        new_email = data['email'].strip().lower()
+        db.execute("UPDATE users SET email = %s WHERE id = %s", (new_email, user['id']))
+        db.execute("UPDATE user_profiles SET email = %s, updated_at = now() WHERE user_id = %s", (new_email, user['id']))
+
+    profile_fields = {}
+    for field in ('first_name', 'last_name', 'display_name'):
+        if field in data:
+            profile_fields[field] = data[field]
+
+    if profile_fields:
+        set_clauses = ', '.join(f"{k} = %s" for k in profile_fields)
+        values = list(profile_fields.values()) + [user['id']]
+        db.execute(f"UPDATE user_profiles SET {set_clauses}, updated_at = now() WHERE user_id = %s", values)
+
+    return jsonify({'message': 'User updated successfully'})
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+
+    if not email:
+        return jsonify({'error': 'Email is required'}), 400
+
+    user = db.query_one("SELECT id FROM users WHERE email = %s", (email,))
+    if not user:
+        return jsonify({'message': 'If an account exists with this email, a reset link will be sent'}), 200
+
+    reset_token = create_token(str(user['id']), email, 'password_reset')
+    send_password_reset_email(email, reset_token)
+
+    return jsonify({'message': 'If an account exists with this email, a reset link will be sent'})
+
+
+@auth_bp.route('/update-password', methods=['POST'])
+def update_password_with_token():
+    data = request.get_json()
+    token = data.get('token', '')
+    new_password = data.get('password') or data.get('newPassword') or ''
+
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer ') and not token:
+        token = auth_header.split(' ', 1)[1]
+
+    if not token or not new_password:
+        return jsonify({'error': 'Token and new password are required'}), 400
+
+    payload = decode_token(token)
+    if not payload:
+        return jsonify({'error': 'Invalid or expired reset token'}), 400
+
+    user_id = payload.get('sub')
+    password_hash = hash_password(new_password)
+    db.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+
+    return jsonify({'message': 'Password updated successfully'})
+
+
+@auth_bp.route('/session', methods=['GET'])
+@require_auth
+def get_session():
+    user = request.current_user
+    profile = user.get('profile', {})
+
+    token = create_token(user['id'], user['email'], user['role'])
+    refresh = create_refresh_token(user['id'])
+
+    return jsonify({
+        'accessToken': token,
+        'refreshToken': refresh,
+        'access_token': token,
+        'refresh_token': refresh,
+        'token_type': 'bearer',
+        'expires_in': int(os.getenv('JWT_EXPIRY_HOURS', '168')) * 3600,
+        'user': {
+            'id': user['id'],
+            'email': user['email'],
+            'role': user['role'],
+            'user_metadata': {
+                'first_name': profile.get('first_name'),
+                'last_name': profile.get('last_name'),
+                'display_name': profile.get('display_name'),
+            }
+        }
+    })
+
+
+@auth_bp.route('/profile', methods=['GET'])
+@require_auth
+def get_profile():
+    user = request.current_user
+    profile = db.query_one("SELECT * FROM user_profiles WHERE user_id = %s", (user['id'],))
+    if profile:
+        profile['id'] = str(profile.get('id', ''))
+        profile['user_id'] = str(profile['user_id'])
+    return jsonify(profile or {})
+
+
+@auth_bp.route('/profile', methods=['PUT'])
+@require_auth
+def update_profile():
+    user = request.current_user
+    data = request.get_json()
+
+    fields = {}
+    for field in ('first_name', 'last_name', 'display_name', 'referral_code'):
+        if field in data:
+            fields[field] = data[field]
+
+    if fields:
+        set_clauses = ', '.join(f"{k} = %s" for k in fields)
+        values = list(fields.values()) + [user['id']]
+        db.execute(f"UPDATE user_profiles SET {set_clauses}, updated_at = now() WHERE user_id = %s", values)
+
+    profile = db.query_one("SELECT * FROM user_profiles WHERE user_id = %s", (user['id'],))
+    return jsonify(profile or {})
+
+
+@auth_bp.route('/admin-check', methods=['GET'])
+@require_auth
+def admin_check():
+    user = request.current_user
+    return jsonify({
+        'is_admin': user['role'] in ('admin', 'superadmin'),
+        'is_superadmin': user['role'] == 'superadmin',
+    })
+
+
+@auth_bp.route('/update-email', methods=['POST'])
+@require_auth
+def update_email():
+    user = request.current_user
+    data = request.get_json()
+    new_email = (data.get('newEmail') or data.get('new_email') or '').strip().lower()
+
+    if not new_email:
+        return jsonify({'error': 'New email is required'}), 400
+
+    existing = db.query_one("SELECT id FROM users WHERE email = %s AND id != %s", (new_email, user['id']))
+    if existing:
+        return jsonify({'error': 'Email already in use', 'code': 'EMAIL_EXISTS'}), 409
+
+    db.execute("UPDATE users SET email = %s WHERE id = %s", (new_email, user['id']))
+    db.execute("UPDATE user_profiles SET email = %s, updated_at = now() WHERE user_id = %s", (new_email, user['id']))
+
+    token = create_token(user['id'], new_email, user['role'])
+    return jsonify({
+        'message': 'Email updated successfully',
+        'user': {'id': user['id'], 'email': new_email},
+        'accessToken': token,
+        'access_token': token,
+    })
+
+
+@auth_bp.route('/delete-account', methods=['POST'])
+@require_auth
+def delete_account():
+    user = request.current_user
+    db.execute("DELETE FROM users WHERE id = %s", (user['id'],))
+    return jsonify({'message': 'Account deleted successfully'})
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+def refresh_token():
+    data = request.get_json()
+    refresh = data.get('refresh_token') or data.get('refreshToken') or ''
+
+    payload = decode_token(refresh)
+    if not payload or payload.get('type') != 'refresh':
+        return jsonify({'error': 'Invalid refresh token'}), 401
+
+    user_id = payload.get('sub')
+    user = db.query_one("SELECT id, email FROM users WHERE id = %s", (user_id,))
+    if not user:
+        return jsonify({'error': 'User not found'}), 401
+
+    profile = db.query_one("SELECT role FROM user_profiles WHERE user_id = %s", (user_id,))
+    role = profile['role'] if profile else 'user'
+
+    token = create_token(str(user['id']), user['email'], role)
+    return jsonify({
+        'accessToken': token,
+        'refreshToken': refresh,
+        'access_token': token,
+        'refresh_token': refresh,
+        'token_type': 'bearer',
+        'user': {'id': str(user['id']), 'email': user['email'], 'role': role},
+    })

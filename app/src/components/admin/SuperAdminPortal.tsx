@@ -1,0 +1,1375 @@
+/**
+ * SuperAdmin Portal
+ * Comprehensive admin dashboard for:
+ * - User management
+ * - Billing/subscription configuration
+ * - Ad configuration
+ * - AI API settings
+ * - System analytics
+ */
+
+import { useState } from 'react';
+import { 
+  Users, 
+  CreditCard, 
+  Settings, 
+  BarChart3, 
+  Shield, 
+  DollarSign,
+  Activity,
+  Search,
+  Filter,
+  RefreshCw,
+  Tag,
+  TrendingUp,
+  Plus,
+  Trash2,
+  Edit,
+  Percent,
+  Globe,
+  Megaphone,
+  MessageSquare,
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertCircle
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+// import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOptionalAuth } from '@/lib/auth/AuthContext';
+import { cn } from '@/lib/utils';
+import { SEOSettingsTab } from './SEOSettingsTab';
+import { SEOExpansionTab } from './SEOExpansionTab';
+import { AdminRefundDashboard } from '@/components/refunds';
+
+interface SuperAdminPortalProps {
+  onClose: () => void;
+}
+
+export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
+  const { isSuperAdmin, user } = useOptionalAuth();
+  const [activeTab, setActiveTab] = useState('overview');
+  // Notification state - available for future use
+  // const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Redirect if not superadmin
+  if (!isSuperAdmin) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-6 text-center">
+            <Shield className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-medium text-slate-800 mb-2">Access Denied</h2>
+            <p className="text-slate-500 mb-4">You don't have permission to access the admin portal.</p>
+            <Button onClick={onClose} className="bg-slate-700 hover:bg-slate-800">
+              Close
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-50 overflow-auto">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <Shield className="w-6 h-6 text-slate-700" />
+              <h1 className="text-xl font-medium text-slate-800">SuperAdmin Portal</h1>
+              <Badge variant="secondary" className="bg-slate-100 text-slate-600">v2.0</Badge>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-slate-500">{user?.email}</span>
+              <Button variant="outline" size="sm" onClick={onClose}>
+                Exit Admin
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Notification alert - available for future use */}
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-11 mb-8">
+            <TabsTrigger value="overview" className="gap-2">
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="users" className="gap-2">
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Users</span>
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="gap-2">
+              <CreditCard className="w-4 h-4" />
+              <span className="hidden sm:inline">Billing</span>
+            </TabsTrigger>
+            <TabsTrigger value="promocodes" className="gap-2">
+              <Tag className="w-4 h-4" />
+              <span className="hidden sm:inline">Promo Codes</span>
+            </TabsTrigger>
+            <TabsTrigger value="refunds" className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refunds</span>
+            </TabsTrigger>
+            <TabsTrigger value="broadcasts" className="gap-2">
+              <Megaphone className="w-4 h-4" />
+              <span className="hidden sm:inline">Broadcasts</span>
+            </TabsTrigger>
+            <TabsTrigger value="support" className="gap-2">
+              <MessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Support</span>
+            </TabsTrigger>
+            <TabsTrigger value="answers" className="gap-2">
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Answers</span>
+            </TabsTrigger>
+            <TabsTrigger value="seo" className="gap-2">
+              <Globe className="w-4 h-4" />
+              <span className="hidden sm:inline">SEO</span>
+            </TabsTrigger>
+            <TabsTrigger value="seo-expansion" className="gap-2">
+              <Globe className="w-4 h-4" />
+              <span className="hidden sm:inline">SEO Expansion</span>
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="gap-2">
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">AI APIs</span>
+            </TabsTrigger>
+            <TabsTrigger value="system" className="gap-2">
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">System</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview">
+            <OverviewTab />
+          </TabsContent>
+
+          <TabsContent value="users">
+            <UsersTab />
+          </TabsContent>
+
+          <TabsContent value="billing">
+            <BillingTab />
+          </TabsContent>
+
+          <TabsContent value="promocodes">
+            <PromoCodesTab />
+          </TabsContent>
+
+          <TabsContent value="refunds">
+            <AdminRefundDashboard />
+          </TabsContent>
+
+          <TabsContent value="broadcasts">
+            <BroadcastsTab />
+          </TabsContent>
+
+          <TabsContent value="support">
+            <SupportTicketsTab />
+          </TabsContent>
+
+          <TabsContent value="answers">
+            <AnswerExamplesTab />
+          </TabsContent>
+
+          <TabsContent value="seo">
+            <SEOSettingsTab />
+          </TabsContent>
+
+          <TabsContent value="seo-expansion">
+            <SEOExpansionTab />
+          </TabsContent>
+
+          <TabsContent value="ads">
+            <AdsTab />
+          </TabsContent>
+
+          <TabsContent value="ai">
+            <AIConfigTab />
+          </TabsContent>
+
+          <TabsContent value="system">
+            <SystemTab />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  );
+}
+
+// Overview Tab
+function OverviewTab() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Users"
+          value="1,247"
+          change="+12%"
+          trend="up"
+          icon={Users}
+        />
+        <StatCard
+          title="Active Subscriptions"
+          value="423"
+          change="+8%"
+          trend="up"
+          icon={CreditCard}
+        />
+        <StatCard
+          title="Monthly Revenue"
+          value="$4,230"
+          change="+15%"
+          trend="up"
+          icon={DollarSign}
+        />
+        <StatCard
+          title="PDF Downloads"
+          value="3,891"
+          change="+23%"
+          trend="up"
+          icon={Activity}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-slate-300" />
+                  <span className="text-slate-600 flex-1">New user registration</span>
+                  <span className="text-slate-400 text-xs">2 min ago</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">System Health</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <HealthItem name="Database" status="healthy" />
+              <HealthItem name="Authentication" status="healthy" />
+              <HealthItem name="AI API" status="warning" message="Rate limit at 80%" />
+              <HealthItem name="Storage" status="healthy" />
+              <HealthItem name="Email Service" status="healthy" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Users Tab
+function UsersTab() {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">User Management</CardTitle>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Search users..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-64"
+                />
+              </div>
+              <Button variant="outline" size="sm">
+                <Filter className="w-4 h-4 mr-1" />
+                Filter
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  <th className="text-left p-3 font-medium text-slate-600">User</th>
+                  <th className="text-left p-3 font-medium text-slate-600">Plan</th>
+                  <th className="text-left p-3 font-medium text-slate-600">Status</th>
+                  <th className="text-left p-3 font-medium text-slate-600">Joined</th>
+                  <th className="text-left p-3 font-medium text-slate-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="p-3">
+                      <div>
+                        <div className="font-medium text-slate-800">user{i}@example.com</div>
+                        <div className="text-xs text-slate-400">User ID: {i}23456</div>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <Badge variant={i % 2 === 0 ? "default" : "secondary"}>
+                        {i % 2 === 0 ? "Pro" : "Free"}
+                      </Badge>
+                    </td>
+                    <td className="p-3">
+                      <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
+                        Active
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-slate-500">Jan {i + 10}, 2025</td>
+                    <td className="p-3">
+                      <Button variant="ghost" size="sm">View</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Billing Tab
+function BillingTab() {
+  const [plans] = useState([
+    { id: 'free', name: 'Free', price: 0, features: ['Basic questions', 'PDF downloads'], active: true },
+    { id: 'pro', name: 'Pro', price: 9.99, features: ['All questions', 'Audio mode', 'Progress sync'], active: true },
+    { id: 'couples', name: 'Couples', price: 14.99, features: ['Partner sync', 'Shared progress', 'Priority support'], active: true },
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Subscription Plans</CardTitle>
+          <CardDescription>Configure pricing and features for each plan</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {plans.map((plan) => (
+              <div key={plan.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <div className="font-medium text-slate-800">{plan.name}</div>
+                  <div className="text-sm text-slate-500">${plan.price}/month</div>
+                  <div className="text-xs text-slate-400 mt-1">{plan.features.join(', ')}</div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Switch checked={plan.active} />
+                  <Button variant="outline" size="sm">Edit</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Payment Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Stripe Public Key</Label>
+              <Input type="password" placeholder="pk_live_..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Stripe Secret Key</Label>
+              <Input type="password" placeholder="sk_live_..." />
+            </div>
+          </div>
+          <Button className="bg-slate-700 hover:bg-slate-800">Save Settings</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Promo Codes Tab
+function PromoCodesTab() {
+  const [promoCodes, setPromoCodes] = useState([
+    { code: 'MARIA10', influencer_name: 'Maria Garcia', discount_percent: 10, is_active: true, total_referrals: 145, total_signups: 23, total_purchases: 8, total_paid_users: 6 },
+    { code: 'ANA20', influencer_name: 'Ana Rodriguez', discount_percent: 20, is_active: true, total_referrals: 89, total_signups: 15, total_purchases: 5, total_paid_users: 4 },
+    { code: 'GREENCARD15', influencer_name: 'Green Card Forum', discount_percent: 15, is_active: true, total_referrals: 234, total_signups: 45, total_purchases: 12, total_paid_users: 10 },
+    { code: 'TEST50', influencer_name: 'Test Influencer', discount_percent: 50, is_active: false, total_referrals: 12, total_signups: 2, total_purchases: 0, total_paid_users: 0 },
+  ]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newInfluencer, setNewInfluencer] = useState('');
+  const [newDiscount, setNewDiscount] = useState(10);
+
+  const handleToggleActive = (code: string) => {
+    setPromoCodes(codes => codes.map(c => 
+      c.code === code ? { ...c, is_active: !c.is_active } : c
+    ));
+  };
+
+  const handleAddCode = () => {
+    if (newCode && newInfluencer) {
+      setPromoCodes(codes => [...codes, {
+        code: newCode.toUpperCase(),
+        influencer_name: newInfluencer,
+        discount_percent: newDiscount,
+        is_active: true,
+        total_referrals: 0,
+        total_signups: 0,
+        total_purchases: 0,
+        total_paid_users: 0,
+      }]);
+      setNewCode('');
+      setNewInfluencer('');
+      setNewDiscount(10);
+      setShowAddForm(false);
+    }
+  };
+
+  const totalReferrals = promoCodes.reduce((sum, c) => sum + c.total_referrals, 0);
+  const totalSignups = promoCodes.reduce((sum, c) => sum + c.total_signups, 0);
+  const totalPurchases = promoCodes.reduce((sum, c) => sum + c.total_purchases, 0);
+  const totalPaidUsers = promoCodes.reduce((sum, c) => sum + c.total_paid_users, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Referrals"
+          value={totalReferrals.toLocaleString()}
+          change="+12%"
+          trend="up"
+          icon={TrendingUp}
+        />
+        <StatCard
+          title="Total Signups"
+          value={totalSignups.toLocaleString()}
+          change="+8%"
+          trend="up"
+          icon={Users}
+        />
+        <StatCard
+          title="Total Purchases"
+          value={totalPurchases.toLocaleString()}
+          change="+15%"
+          trend="up"
+          icon={DollarSign}
+        />
+        <StatCard
+          title="Paid Users"
+          value={totalPaidUsers.toLocaleString()}
+          change="+5%"
+          trend="up"
+          icon={Activity}
+        />
+      </div>
+
+      {/* Promo Codes List */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Promo Codes</CardTitle>
+              <CardDescription>Manage influencer promo codes and track performance</CardDescription>
+            </div>
+            <Button onClick={() => setShowAddForm(!showAddForm)} className="bg-slate-700 hover:bg-slate-800">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Code
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Add New Code Form */}
+          {showAddForm && (
+            <div className="mb-6 p-4 border rounded-lg bg-slate-50 space-y-4">
+              <h4 className="font-medium text-slate-700">Add New Promo Code</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Code</Label>
+                  <Input
+                    placeholder="e.g., MARIA10"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Influencer Name</Label>
+                  <Input
+                    placeholder="e.g., Maria Garcia"
+                    value={newInfluencer}
+                    onChange={(e) => setNewInfluencer(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Discount %</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={newDiscount}
+                    onChange={(e) => setNewDiscount(parseInt(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleAddCode} className="bg-slate-700 hover:bg-slate-800">
+                  Create Code
+                </Button>
+                <Button variant="outline" onClick={() => setShowAddForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Codes Table */}
+          <div className="border rounded-lg">
+            {promoCodes.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <Tag className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-medium">No promo codes yet</p>
+                <p className="text-sm">Click "Add Code" to create your first promo code.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="text-left p-3 font-medium text-slate-600">Code</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Influencer</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Discount</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Referrals</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Signups</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Purchases</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Paid Users</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Status</th>
+                    <th className="text-left p-3 font-medium text-slate-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promoCodes.map((code) => (
+                    <tr key={code.code} className="border-b last:border-0">
+                      <td className="p-3">
+                        <div className="font-medium text-slate-800">{code.code}</div>
+                      </td>
+                      <td className="p-3 text-slate-600">{code.influencer_name}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
+                          <Percent className="w-3 h-3 mr-1" />
+                          {code.discount_percent}%
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-slate-600">{code.total_referrals.toLocaleString()}</td>
+                      <td className="p-3 text-slate-600">{code.total_signups.toLocaleString()}</td>
+                      <td className="p-3 text-slate-600">{code.total_purchases.toLocaleString()}</td>
+                      <td className="p-3 text-slate-600">{code.total_paid_users.toLocaleString()}</td>
+                      <td className="p-3">
+                        <Switch
+                          checked={code.is_active}
+                          onCheckedChange={() => handleToggleActive(code.code)}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm">
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Referral URL Examples */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Referral URL Examples</CardTitle>
+          <CardDescription>Share these URLs with influencers. Both formats work identically.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {promoCodes.filter(c => c.is_active).length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <p>No active promo codes.</p>
+              <p className="text-sm">Create a promo code to generate referral URLs.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {promoCodes.filter(c => c.is_active).slice(0, 3).map((code) => (
+                <div key={code.code} className="p-3 border rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium text-slate-800">{code.influencer_name}</div>
+                    <Badge variant="outline">{code.discount_percent}% off</Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <code className="text-sm text-slate-500 block">{`https://interviewready.com/?ref=${code.code}`}</code>
+                    <code className="text-sm text-slate-500 block">{`https://interviewready.com/ref/${code.code}`}</code>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Ads Tab
+function AdsTab() {
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Ad Configuration</CardTitle>
+          <CardDescription>Manage ad networks and display settings</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <div className="font-medium text-slate-800">Enable Ads</div>
+              <div className="text-sm text-slate-500">Show ads to free tier users</div>
+            </div>
+            <Switch defaultChecked />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-4">
+            <h4 className="font-medium text-slate-700">Ad Networks</h4>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Google AdSense ID</Label>
+                <Input placeholder="ca-pub-..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Ad Placement ID</Label>
+                <Input placeholder="1234567890" />
+              </div>
+            </div>
+          </div>
+
+          <Button className="bg-slate-700 hover:bg-slate-800">Save Ad Settings</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// AI Config Tab
+function AIConfigTab() {
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">AI API Configuration</CardTitle>
+          <CardDescription>Configure AI services for advanced features</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <h4 className="font-medium text-slate-700">OpenAI</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input type="password" placeholder="sk-..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Model</Label>
+                <Input defaultValue="gpt-4" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="openai-enabled" />
+              <Label htmlFor="openai-enabled">Enable OpenAI features</Label>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-4">
+            <h4 className="font-medium text-slate-700">Text-to-Speech</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Provider</Label>
+                <select className="w-full h-10 px-3 rounded-md border border-slate-200">
+                  <option>Browser Native</option>
+                  <option>Google Cloud TTS</option>
+                  <option>Amazon Polly</option>
+                  <option>ElevenLabs</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>API Key (if required)</Label>
+                <Input type="password" placeholder="Optional" />
+              </div>
+            </div>
+          </div>
+
+          <Button className="bg-slate-700 hover:bg-slate-800">Save AI Settings</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Usage Limits</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-slate-800">Free Tier Monthly Limit</div>
+                <div className="text-sm text-slate-500">AI requests per month</div>
+              </div>
+              <Input type="number" defaultValue={50} className="w-24" />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-slate-800">Pro Tier Monthly Limit</div>
+                <div className="text-sm text-slate-500">AI requests per month</div>
+              </div>
+              <Input type="number" defaultValue={500} className="w-24" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// System Tab
+function SystemTab() {
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Email Configuration</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>SMTP Host</Label>
+              <Input placeholder="smtp.example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>SMTP Port</Label>
+              <Input placeholder="587" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>From Email</Label>
+            <Input placeholder="noreply@interviewready.com" />
+          </div>
+          <Button className="bg-slate-700 hover:bg-slate-800">Save Email Settings</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Backup & Export</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Button variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Backup Database
+            </Button>
+            <Button variant="outline">
+              Export User Data
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Broadcasts Tab
+function BroadcastsTab() {
+  const [broadcasts, setBroadcasts] = useState([
+    { id: '1', title: 'New Feature: AI Interview Mode', message: 'Try our new AI-powered interview practice!', audience_type: 'all_users', is_active: true, created_at: '2024-03-15T10:00:00Z', sent_count: 1234 },
+    { id: '2', title: '50% Off Spring Sale', message: 'Get 50% off premium plans this week only!', audience_type: 'trial_users', is_active: false, created_at: '2024-03-10T10:00:00Z', sent_count: 0 },
+  ]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newBroadcast, setNewBroadcast] = useState({
+    title: '',
+    message: '',
+    audience_type: 'all_users' as 'all_users' | 'trial_users' | 'premium_users' | 'expired_users' | 'free_users',
+  });
+
+  const audienceLabels: Record<string, string> = {
+    all_users: 'All Users',
+    trial_users: 'Trial Users',
+    premium_users: 'Premium Users',
+    expired_users: 'Expired Subscriptions',
+    free_users: 'Free Users',
+  };
+
+  const handleToggleActive = (id: string) => {
+    setBroadcasts(prev => prev.map(b =>
+      b.id === id ? { ...b, is_active: !b.is_active } : b
+    ));
+  };
+
+  const handleAddBroadcast = () => {
+    if (newBroadcast.title && newBroadcast.message) {
+      setBroadcasts(prev => [...prev, {
+        id: Date.now().toString(),
+        title: newBroadcast.title,
+        message: newBroadcast.message,
+        audience_type: newBroadcast.audience_type,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        sent_count: 0,
+      }]);
+      setNewBroadcast({ title: '', message: '', audience_type: 'all_users' });
+      setShowAddForm(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Broadcast Messages</CardTitle>
+              <CardDescription>Send announcements to user groups</CardDescription>
+            </div>
+            <Button onClick={() => setShowAddForm(!showAddForm)} className="bg-slate-700 hover:bg-slate-800">
+              <Plus className="w-4 h-4 mr-2" />
+              New Broadcast
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {showAddForm && (
+            <div className="mb-6 p-4 border rounded-lg bg-slate-50 space-y-4">
+              <h4 className="font-medium text-slate-700">Create New Broadcast</h4>
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input
+                  placeholder="e.g., New Feature Announcement"
+                  value={newBroadcast.title}
+                  onChange={(e) => setNewBroadcast(prev => ({ ...prev, title: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Message</Label>
+                <textarea
+                  className="w-full min-h-[100px] px-3 py-2 rounded-md border border-slate-200 text-sm"
+                  placeholder="Enter your message..."
+                  value={newBroadcast.message}
+                  onChange={(e) => setNewBroadcast(prev => ({ ...prev, message: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Target Audience</Label>
+                <select
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
+                  value={newBroadcast.audience_type}
+                  onChange={(e) => setNewBroadcast(prev => ({ ...prev, audience_type: e.target.value as typeof newBroadcast.audience_type }))}
+                >
+                  <option value="all_users">All Users</option>
+                  <option value="trial_users">Trial Users</option>
+                  <option value="premium_users">Premium Users</option>
+                  <option value="expired_users">Expired Subscriptions</option>
+                  <option value="free_users">Free Users</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleAddBroadcast} className="bg-slate-700 hover:bg-slate-800">
+                  Create Broadcast
+                </Button>
+                <Button variant="outline" onClick={() => setShowAddForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="border rounded-lg">
+            {broadcasts.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <Megaphone className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-medium">No broadcasts yet</p>
+                <p className="text-sm">Click "New Broadcast" to create your first announcement.</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {broadcasts.map((broadcast) => (
+                  <div key={broadcast.id} className="p-4 flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-slate-800">{broadcast.title}</h4>
+                        <Badge variant={broadcast.is_active ? 'default' : 'secondary'}>
+                          {broadcast.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">{broadcast.message}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>Audience: {audienceLabels[broadcast.audience_type]}</span>
+                        <span>Sent to: {broadcast.sent_count.toLocaleString()} users</span>
+                        <span>Created: {new Date(broadcast.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={broadcast.is_active}
+                        onCheckedChange={() => handleToggleActive(broadcast.id)}
+                      />
+                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Support Tickets Tab
+function SupportTicketsTab() {
+  const [tickets, setTickets] = useState([
+    { id: '1', user_email: 'user@example.com', subject: 'Billing question', category: 'billing', message: 'I was charged twice this month.', status: 'open', created_at: '2024-03-15T10:00:00Z', admin_reply: null },
+    { id: '2', user_email: 'john@example.com', subject: 'App keeps crashing', category: 'technical', message: 'The app crashes when I try to start a mock interview.', status: 'replied', created_at: '2024-03-14T15:30:00Z', admin_reply: 'Thanks for reporting. We are looking into this issue.' },
+    { id: '3', user_email: 'sarah@example.com', subject: 'How to reset password', category: 'account', message: 'I forgot my password and need to reset it.', status: 'closed', created_at: '2024-03-10T09:00:00Z', admin_reply: 'Please use the forgot password link on the login page.' },
+  ]);
+  const [selectedTicket, setSelectedTicket] = useState<typeof tickets[0] | null>(null);
+  const [replyText, setReplyText] = useState('');
+
+  const statusColors: Record<string, string> = {
+    open: 'bg-amber-100 text-amber-700 border-amber-200',
+    replied: 'bg-blue-100 text-blue-700 border-blue-200',
+    closed: 'bg-slate-100 text-slate-600 border-slate-200',
+  };
+
+  const categoryLabels: Record<string, string> = {
+    billing: 'Billing',
+    technical: 'Technical',
+    account: 'Account',
+    feature_request: 'Feature Request',
+    other: 'Other',
+  };
+
+  const handleReply = (ticketId: string) => {
+    if (!replyText.trim()) return;
+    setTickets(prev => prev.map(t =>
+      t.id === ticketId ? { ...t, status: 'replied', admin_reply: replyText } : t
+    ));
+    setReplyText('');
+    setSelectedTicket(null);
+  };
+
+  const handleClose = (ticketId: string) => {
+    setTickets(prev => prev.map(t =>
+      t.id === ticketId ? { ...t, status: 'closed' } : t
+    ));
+    setSelectedTicket(null);
+  };
+
+  const openCount = tickets.filter(t => t.status === 'open').length;
+  const repliedCount = tickets.filter(t => t.status === 'replied').length;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Open Tickets" value={openCount.toString()} change="" trend="up" icon={MessageSquare} />
+        <StatCard title="Awaiting Reply" value={repliedCount.toString()} change="" trend="up" icon={Activity} />
+        <StatCard title="Total Today" value={tickets.length.toString()} change="" trend="up" icon={Users} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Support Tickets</CardTitle>
+              <CardDescription>Manage user support requests</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                {openCount} Open
+              </Badge>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                {repliedCount} Replied
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg">
+            {tickets.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-medium">No support tickets</p>
+                <p className="text-sm">All caught up!</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {tickets.map((ticket) => (
+                  <div key={ticket.id} className="p-4 flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-slate-800">{ticket.subject}</h4>
+                        <Badge variant="outline" className={statusColors[ticket.status]}>
+                          {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1 line-clamp-2">{ticket.message}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>From: {ticket.user_email}</span>
+                        <span>Category: {categoryLabels[ticket.category]}</span>
+                        <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedTicket(ticket)}>
+                        {ticket.status === 'open' ? 'Reply' : 'View'}
+                      </Button>
+                      {ticket.status !== 'closed' && (
+                        <Button variant="ghost" size="sm" onClick={() => handleClose(ticket.id)}>
+                          Close
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reply Dialog */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg">
+            <CardHeader>
+              <CardTitle>Reply to Ticket</CardTitle>
+              <CardDescription>
+                {selectedTicket.subject} • {selectedTicket.user_email}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-slate-50 p-3 rounded-lg">
+                <p className="text-sm text-slate-700">{selectedTicket.message}</p>
+              </div>
+              {selectedTicket.admin_reply && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-xs text-blue-600 font-medium mb-1">Previous Reply:</p>
+                  <p className="text-sm text-slate-700">{selectedTicket.admin_reply}</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Your Reply</Label>
+                <textarea
+                  className="w-full min-h-[100px] px-3 py-2 rounded-md border border-slate-200 text-sm"
+                  placeholder="Type your response..."
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                />
+              </div>
+            </CardContent>
+            <CardContent className="flex justify-end gap-2 pt-0">
+              <Button variant="outline" onClick={() => setSelectedTicket(null)}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleReply(selectedTicket.id)} className="bg-slate-700 hover:bg-slate-800">
+                Send Reply
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Answer Examples Tab
+function AnswerExamplesTab() {
+  const [candidates, setCandidates] = useState([
+    { id: '1', question_prompt: 'How did you meet your spouse?', category: 'met_online', answer_pattern: 'met_online', sanitized_answer: 'We met on a dating app about three years ago. We talked for a few weeks before meeting in person at a coffee shop downtown.', quality_score: 'usable_example', review_status: 'pending', created_at: '2024-03-15T10:00:00Z', user_email: 'user1@example.com' },
+    { id: '2', question_prompt: 'Tell me about your wedding ceremony.', category: 'wedding_courthouse', answer_pattern: 'wedding_courthouse', sanitized_answer: 'We had a simple ceremony at the courthouse with just our parents and siblings present. It was intimate and perfect for us.', quality_score: 'strong_story_structure', review_status: 'pending', created_at: '2024-03-14T15:30:00Z', user_email: 'user2@example.com' },
+    { id: '3', question_prompt: 'How did you meet your spouse?', category: 'met_at_work', answer_pattern: 'met_at_work', sanitized_answer: 'We worked at the same company. I was in marketing and they were in sales. We met at a team building event.', quality_score: 'usable_example', review_status: 'approved', created_at: '2024-03-10T09:00:00Z', user_email: 'user3@example.com' },
+  ]);
+  const [stats] = useState({ totalCandidates: 3, pendingReview: 2, approvedCount: 1, rejectedCount: 0, needsEditCount: 0, todayCount: 0 });
+  const [selectedCandidate, setSelectedCandidate] = useState<typeof candidates[0] | null>(null);
+  const [reviewerNotes, setReviewerNotes] = useState('');
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  const statusColors: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700 border-amber-200',
+    approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    rejected: 'bg-red-100 text-red-700 border-red-200',
+    needs_edit: 'bg-blue-100 text-blue-700 border-blue-200',
+  };
+
+  const qualityColors: Record<string, string> = {
+    too_short: 'bg-slate-100 text-slate-600',
+    usable_example: 'bg-blue-100 text-blue-700',
+    needs_cleanup: 'bg-amber-100 text-amber-700',
+    strong_story_structure: 'bg-emerald-100 text-emerald-700',
+    uncategorized: 'bg-slate-100 text-slate-600',
+  };
+
+  const handleReview = (candidateId: string, status: 'approved' | 'rejected' | 'needs_edit') => {
+    setCandidates(prev => prev.map(c =>
+      c.id === candidateId ? { ...c, review_status: status } : c
+    ));
+    setSelectedCandidate(null);
+    setReviewerNotes('');
+  };
+
+  const pendingCount = candidates.filter(c => c.review_status === 'pending').length;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Total Candidates" value={stats.totalCandidates.toString()} change="" trend="up" icon={FileText} />
+        <StatCard title="Pending Review" value={pendingCount.toString()} change="" trend="up" icon={AlertCircle} />
+        <StatCard title="Approved" value={stats.approvedCount.toString()} change="" trend="up" icon={CheckCircle} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Answer Example Candidates</CardTitle>
+              <CardDescription>Review sanitized user answers for potential educational examples</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                {pendingCount} Pending
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg">
+            {candidates.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-medium">No answer candidates yet</p>
+                <p className="text-sm">Answers from AI interviews will appear here for review.</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="p-4 flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-medium text-slate-800">{candidate.question_prompt}</h4>
+                        <Badge variant="outline" className={statusColors[candidate.review_status]}>
+                          {candidate.review_status.replace('_', ' ')}
+                        </Badge>
+                        <Badge variant="outline" className={qualityColors[candidate.quality_score]}>
+                          {candidate.quality_score.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-2 line-clamp-2">{candidate.sanitized_answer}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>Pattern: {candidate.answer_pattern}</span>
+                        <span>From: {candidate.user_email}</span>
+                        <span>{new Date(candidate.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedCandidate(candidate)}>
+                        Review
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Review Dialog */}
+      {selectedCandidate && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <CardTitle>Review Answer Candidate</CardTitle>
+              <CardDescription>
+                {selectedCandidate.question_prompt}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className={statusColors[selectedCandidate.review_status]}>
+                  Status: {selectedCandidate.review_status}
+                </Badge>
+                <Badge variant="outline" className={qualityColors[selectedCandidate.quality_score]}>
+                  Quality: {selectedCandidate.quality_score}
+                </Badge>
+                <Badge variant="outline">
+                  Pattern: {selectedCandidate.answer_pattern}
+                </Badge>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-slate-500">SANITIZED ANSWER (for publication)</p>
+                </div>
+                <p className="text-sm text-slate-700">{selectedCandidate.sanitized_answer}</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch id="show-original" checked={showOriginal} onCheckedChange={setShowOriginal} />
+                <Label htmlFor="show-original" className="text-sm text-slate-600">Show original answer (private)</Label>
+              </div>
+
+              {showOriginal && (
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
+                  <p className="text-xs font-medium text-amber-600 mb-2">ORIGINAL ANSWER (ADMIN ONLY - NEVER PUBLISH)</p>
+                  <p className="text-sm text-slate-700">[Original answer would appear here from database]</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Reviewer Notes</Label>
+                <textarea
+                  className="w-full min-h-[80px] px-3 py-2 rounded-md border border-slate-200 text-sm"
+                  placeholder="Add notes about this candidate..."
+                  value={reviewerNotes}
+                  onChange={(e) => setReviewerNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-700">
+                <p className="font-medium">Publication Safety Check</p>
+                <ul className="list-disc list-inside mt-1 text-xs">
+                  <li>Only the sanitized version would ever be published</li>
+                  <li>Original answer is never exposed publicly</li>
+                  <li>No automatic publication - manual approval required</li>
+                </ul>
+              </div>
+            </CardContent>
+            <CardContent className="flex justify-end gap-2 pt-0">
+              <Button variant="outline" onClick={() => setSelectedCandidate(null)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => handleReview(selectedCandidate.id, 'needs_edit')}
+                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                <AlertCircle className="w-4 h-4 mr-2" />
+                Needs Edit
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => handleReview(selectedCandidate.id, 'rejected')}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                Reject
+              </Button>
+              <Button 
+                onClick={() => handleReview(selectedCandidate.id, 'approved')}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Approve
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Helper Components
+function StatCard({ title, value, change, trend, icon: Icon }: {
+  title: string;
+  value: string;
+  change: string;
+  trend: 'up' | 'down';
+  icon: typeof Users;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between">
+          <div className="p-2 bg-slate-100 rounded-lg">
+            <Icon className="w-5 h-5 text-slate-600" />
+          </div>
+          <Badge variant={trend === 'up' ? 'default' : 'destructive'} className="text-xs">
+            {change}
+          </Badge>
+        </div>
+        <div className="mt-4">
+          <div className="text-2xl font-medium text-slate-800">{value}</div>
+          <div className="text-sm text-slate-500">{title}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function HealthItem({ name, status, message }: {
+  name: string;
+  status: 'healthy' | 'warning' | 'error';
+  message?: string;
+}) {
+  const statusColors = {
+    healthy: 'bg-emerald-500',
+    warning: 'bg-amber-500',
+    error: 'bg-red-500',
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className={cn('w-2 h-2 rounded-full', statusColors[status])} />
+        <span className="text-slate-700">{name}</span>
+      </div>
+      <div className="text-right">
+        {message ? (
+          <span className="text-sm text-amber-600">{message}</span>
+        ) : (
+          <span className="text-sm text-emerald-600">Operational</span>
+        )}
+      </div>
+    </div>
+  );
+}
