@@ -29,6 +29,7 @@ import {
   MessageSquare,
   ClipboardCheck
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { NotificationPanel } from '@/components/notifications';
 import { SupportTicketPanel } from '@/components/support';
 import { PlanStatusPanel } from '@/components/entitlements/PlanStatusPanel';
@@ -104,10 +105,11 @@ export function Dashboard({
     startRetentionOffer,
     cancelPlanRenewal,
     resumePlanRenewal,
+    manageSubscription,
   } = usePricing();
   const [lastTopic] = useLocalStorage<string | null>('interview-last-topic', null);
   const [milestones] = useLocalStorage('interview-timeline-v2', []);
-  const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | 'retention' | null>(null);
+  const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | 'retention' | 'manage' | null>(null);
   const [billingMessage, setBillingMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundReason, setRefundReason] = useState<RefundReason>('not_satisfied');
@@ -284,6 +286,7 @@ export function Dashboard({
 
   // Timeline completion
   const timelineCompletion = useMemo(() => {
+    if (!Array.isArray(milestones) || milestones.length === 0) return 0;
     const filled = milestones.filter((m: { date: string }) => m.date).length;
     return Math.round((filled / milestones.length) * 100);
   }, [milestones]);
@@ -353,6 +356,18 @@ export function Dashboard({
       setBillingAction(null);
     }
   };
+  const runManageBilling = async () => {
+    setBillingAction('manage');
+    setBillingMessage(null);
+    const result = await manageSubscription();
+    if (!result.success) {
+      setBillingMessage({
+        tone: 'error',
+        text: result.error || 'Unable to open Stripe billing management.',
+      });
+      setBillingAction(null);
+    }
+  };
   const runRetentionOffer = async () => {
     setBillingAction('retention');
     setBillingMessage(null);
@@ -393,6 +408,96 @@ export function Dashboard({
     { label: 'AI interview coach', enabled: featureAccess.mockInterview },
     { label: 'Provider/model choice', enabled: hasPremium },
   ];
+  const reviewQueueCount = practiceSummary.saved + practiceSummary.needsPractice + practiceSummary.nervous;
+  const prepPlanItems = useMemo(() => {
+    const items: {
+      label: string;
+      detail: string;
+      action: string;
+      icon: LucideIcon;
+      onClick: () => void;
+    }[] = [];
+
+    items.push(readinessResult
+      ? {
+        label: 'Review readiness details',
+        detail: `${readinessResult.overallScore}% readiness score`,
+        action: 'Open score',
+        icon: ShieldCheck,
+        onClick: onViewProgress,
+      }
+      : {
+        label: 'Take readiness check',
+        detail: 'Set your baseline before practice',
+        action: 'Start check',
+        icon: Sparkles,
+        onClick: onViewProgress,
+      });
+
+    if (reviewQueueCount > 0) {
+      items.push({
+        label: 'Clear review queue',
+        detail: `${reviewQueueCount} saved or difficult items`,
+        action: 'Review now',
+        icon: AlertCircle,
+        onClick: onViewSaved,
+      });
+    } else {
+      items.push({
+        label: 'Start focused practice',
+        detail: 'Build momentum with a short session',
+        action: 'Practice',
+        icon: ClipboardCheck,
+        onClick: onStartQuickPractice,
+      });
+    }
+
+    items.push(timelineCompletion < 100
+      ? {
+        label: 'Strengthen your timeline',
+        detail: `${timelineCompletion}% complete`,
+        action: 'Open timeline',
+        icon: Calendar,
+        onClick: onViewTimeline,
+      }
+      : {
+        label: 'Rehearse timeline answers',
+        detail: 'Use your finished milestones',
+        action: 'Mock interview',
+        icon: Mic,
+        onClick: onStartMockInterview,
+      });
+
+    items.push(partnerSummary.status === 'connected'
+      ? {
+        label: 'Compare spouse progress',
+        detail: `${partnerSummary.bothNeedPractice} shared review points`,
+        action: 'Open sync',
+        icon: Users,
+        onClick: onViewCouplePractice,
+      }
+      : {
+        label: 'Invite spouse to sync',
+        detail: 'Compare answers before the interview',
+        action: 'Invite',
+        icon: Users,
+        onClick: onViewCouplePractice,
+      });
+
+    return items;
+  }, [
+    onStartMockInterview,
+    onStartQuickPractice,
+    onViewCouplePractice,
+    onViewProgress,
+    onViewSaved,
+    onViewTimeline,
+    partnerSummary.bothNeedPractice,
+    partnerSummary.status,
+    readinessResult,
+    reviewQueueCount,
+    timelineCompletion,
+  ]);
   const pdfLibraryTopics = useMemo(
     () => normalizedTopics.filter(topic => topic.pdfFileName).slice(0, 4),
     [normalizedTopics]
@@ -498,6 +603,57 @@ export function Dashboard({
           </CardContent>
         </Card>
 
+        {/* Prep Plan */}
+        <Card className={cardClass}>
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                  <ClipboardCheck className="w-4 h-4 text-slate-600" />
+                  Today's Prep Plan
+                </CardTitle>
+                <p className="text-sm text-slate-700 mt-1">
+                  A short path based on readiness, review items, timeline progress, and spouse sync.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={onStartMockInterview}>
+                <Mic className="w-4 h-4 mr-2" />
+                Mock Interview
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {prepPlanItems.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={`${item.label}-${index}`}
+                    type="button"
+                    onClick={item.onClick}
+                    className="group rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:border-slate-300 hover:bg-white hover:shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-slate-950">{item.label}</p>
+                    <p className="mt-1 min-h-10 text-sm text-slate-700">{item.detail}</p>
+                    <span className="mt-3 inline-flex items-center text-sm font-medium text-slate-800 group-hover:text-slate-950">
+                      {item.action}
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Subscription + Premium Access */}
         <Card className={cardClass}>
           <CardHeader>
@@ -579,6 +735,20 @@ export function Dashboard({
                 <CreditCard className="w-4 h-4 mr-2" />
                 {hasPremium ? 'View Billing Options' : 'Upgrade for Premium'}
               </Button>
+              {hasPremium && (
+                <Button
+                  variant="outline"
+                  onClick={runManageBilling}
+                  disabled={billingAction !== null}
+                >
+                  {billingAction === 'manage' ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Settings className="w-4 h-4 mr-2" />
+                  )}
+                  Manage billing
+                </Button>
+              )}
               {canUpgradeToLifetime && (
                 <Button
                   variant="outline"

@@ -8,7 +8,6 @@ import { ArrowLeft, Mic, MessageSquare, Lightbulb, ArrowRight, CheckCircle, Refr
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-// cn utility available for future styling
 import { normalizeAllTopics } from '@/lib/practice/normalize';
 import { topics } from '@/data/topics';
 import { getRelatedQuestions } from '@/lib/practice/relatedQuestions';
@@ -18,9 +17,14 @@ interface MockInterviewProps {
   onBack: () => void;
 }
 
+interface InterviewQueueItem {
+  topic: PracticeTopic;
+  question: PracticeQuestion;
+}
+
 export function MockInterview({ onBack }: MockInterviewProps) {
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
-  
+
   const [interviewState, setInterviewState] = useState<'intro' | 'question' | 'followup' | 'complete'>('intro');
   const [currentQuestion, setCurrentQuestion] = useState<PracticeQuestion | null>(null);
   const [currentTopic, setCurrentTopic] = useState<PracticeTopic | null>(null);
@@ -28,39 +32,106 @@ export function MockInterview({ onBack }: MockInterviewProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [answeredQuestions, setAnsweredQuestions] = useState<string[]>([]);
   const [followUpMode, setFollowUpMode] = useState(false);
+  const [questionQueue, setQuestionQueue] = useState<InterviewQueueItem[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
 
-  // Select a random question
-  const selectRandomQuestion = useCallback(() => {
-    const availableTopics = normalizedTopics.filter(t => 
-      !answeredQuestions.includes(t.questions[0]?.id)
-    );
-    
-    if (availableTopics.length === 0) {
+  const loadQueueQuestion = useCallback((queue: InterviewQueueItem[], index: number) => {
+    const item = queue[index];
+
+    if (!item) {
       setInterviewState('complete');
+      setFollowUpMode(false);
+      setRelatedQuestion(null);
       return;
     }
 
-    const randomTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
-    const randomQuestion = randomTopic.questions[Math.floor(Math.random() * Math.min(3, randomTopic.questions.length))];
-    
-    setCurrentTopic(randomTopic);
-    setCurrentQuestion(randomQuestion);
+    setCurrentTopic(item.topic);
+    setCurrentQuestion(item.question);
     setShowAnswer(false);
     setRelatedQuestion(null);
     setFollowUpMode(false);
     setInterviewState('question');
-  }, [normalizedTopics, answeredQuestions]);
+  }, []);
 
-  // Get related question
+  const buildInterviewQueue = useCallback(() => {
+    const priorityTopicIds = [
+      'relationship-timeline',
+      'daily-routine',
+      'kitchen-household',
+      'family-inlaws',
+      'evidence-shared-life',
+      'red-flag',
+      'future-plans',
+      'address-history',
+    ];
+    const usedQuestionIds = new Set<string>();
+    const queue: InterviewQueueItem[] = [];
+
+    const addQuestion = (topic: PracticeTopic, question: PracticeQuestion) => {
+      if (usedQuestionIds.has(question.id)) return;
+      usedQuestionIds.add(question.id);
+      queue.push({ topic, question });
+    };
+
+    priorityTopicIds.forEach((topicId, index) => {
+      const topic = normalizedTopics.find(t => t.id === topicId);
+      if (!topic?.questions.length) return;
+      const questionIndex = Math.min(index % 3, topic.questions.length - 1);
+      addQuestion(topic, topic.questions[questionIndex]);
+    });
+
+    const remainingPool = normalizedTopics.flatMap(topic =>
+      topic.questions.slice(0, 4).map(question => ({ topic, question }))
+    ).filter(item => !usedQuestionIds.has(item.question.id));
+
+    while (queue.length < 8 && remainingPool.length > 0) {
+      const randomIndex = Math.floor(Math.random() * remainingPool.length);
+      const [item] = remainingPool.splice(randomIndex, 1);
+      addQuestion(item.topic, item.question);
+    }
+
+    return queue.slice(0, 8);
+  }, [normalizedTopics]);
+
+  const startInterview = useCallback(() => {
+    const queue = buildInterviewQueue();
+    setQuestionQueue(queue);
+    setQueueIndex(0);
+    setAnsweredQuestions([]);
+    loadQueueQuestion(queue, 0);
+  }, [buildInterviewQueue, loadQueueQuestion]);
+
+  const completeActiveQuestion = useCallback(() => {
+    if (!currentQuestion) return;
+    setAnsweredQuestions(prev => (
+      prev.includes(currentQuestion.id) ? prev : [...prev, currentQuestion.id]
+    ));
+  }, [currentQuestion]);
+
+  const handleNextQuestion = useCallback(() => {
+    completeActiveQuestion();
+
+    const nextIndex = queueIndex + 1;
+    if (nextIndex >= questionQueue.length) {
+      setInterviewState('complete');
+      setFollowUpMode(false);
+      setRelatedQuestion(null);
+      return;
+    }
+
+    setQueueIndex(nextIndex);
+    loadQueueQuestion(questionQueue, nextIndex);
+  }, [completeActiveQuestion, loadQueueQuestion, questionQueue, queueIndex]);
+
   const showRelatedQuestion = useCallback(() => {
     if (!currentQuestion || !currentTopic) return;
-    
+
     const related = getRelatedQuestions({
       currentQuestion,
       currentTopic,
       allTopics: normalizedTopics,
       maxItems: 3,
-    });
+    }).filter(item => item.question.id !== currentQuestion.id);
 
     if (related.length > 0) {
       const randomRelated = related[Math.floor(Math.random() * related.length)];
@@ -68,22 +139,12 @@ export function MockInterview({ onBack }: MockInterviewProps) {
       setFollowUpMode(true);
       setInterviewState('followup');
       setShowAnswer(false);
-    } else {
-      // If no related questions, move to next
-      handleNextQuestion();
+      return;
     }
-  }, [currentQuestion, currentTopic, normalizedTopics]);
 
-  const handleNextQuestion = () => {
-    if (currentQuestion) {
-      setAnsweredQuestions(prev => [...prev, currentQuestion.id]);
-    }
-    selectRandomQuestion();
-  };
+    handleNextQuestion();
+  }, [currentQuestion, currentTopic, handleNextQuestion, normalizedTopics]);
 
-  // handleComplete available for future use
-
-  // Intro screen
   if (interviewState === 'intro') {
     return (
       <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-4">
@@ -94,15 +155,15 @@ export function MockInterview({ onBack }: MockInterviewProps) {
             </div>
             <h2 className="text-2xl font-medium text-slate-800 mb-2">Mock Interview</h2>
             <p className="text-slate-500 mb-6">
-              Practice with a simulated interview experience. Questions will be presented 
+              Practice with a simulated interview experience. Questions will be presented
               one at a time, with follow-up questions based on your responses.
             </p>
             <div className="space-y-2 text-sm text-slate-500 mb-6">
-              <p>• No scoring or grades</p>
-              <p>• Practice at your own pace</p>
-              <p>• Review suggested responses</p>
+              <p>- No scoring or grades</p>
+              <p>- Practice at your own pace</p>
+              <p>- Review suggested responses</p>
             </div>
-            <Button onClick={selectRandomQuestion} className="bg-slate-700 hover:bg-slate-800">
+            <Button onClick={startInterview} className="bg-slate-700 hover:bg-slate-800">
               Start Mock Interview
             </Button>
           </CardContent>
@@ -111,8 +172,9 @@ export function MockInterview({ onBack }: MockInterviewProps) {
     );
   }
 
-  // Complete screen
   if (interviewState === 'complete') {
+    const practicedCount = Math.max(answeredQuestions.length, Math.min(queueIndex + 1, questionQueue.length));
+
     return (
       <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-4">
         <Card className="max-w-lg w-full">
@@ -120,14 +182,11 @@ export function MockInterview({ onBack }: MockInterviewProps) {
             <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
             <h2 className="text-2xl font-medium text-slate-800 mb-2">Practice Complete</h2>
             <p className="text-slate-500 mb-6">
-              You practiced {answeredQuestions.length} questions. 
+              You practiced {practicedCount} questions.
               Great work preparing for your interview!
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => {
-                setAnsweredQuestions([]);
-                selectRandomQuestion();
-              }}>
+              <Button variant="outline" onClick={startInterview}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Practice More
               </Button>
@@ -143,12 +202,13 @@ export function MockInterview({ onBack }: MockInterviewProps) {
 
   const activeQuestion = followUpMode && relatedQuestion ? relatedQuestion : currentQuestion;
   const isFollowUp = followUpMode && relatedQuestion;
+  const currentNumber = Math.min(queueIndex + 1, Math.max(questionQueue.length, 1));
+  const totalQuestions = Math.max(questionQueue.length, 1);
 
   if (!activeQuestion || !currentTopic) return null;
 
   return (
     <div className="min-h-screen bg-slate-50/50">
-      {/* Header */}
       <div className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
@@ -164,10 +224,8 @@ export function MockInterview({ onBack }: MockInterviewProps) {
         </div>
       </div>
 
-      {/* Content */}
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         <div className="space-y-6">
-          {/* Question Card */}
           <Card className="border-slate-200/60">
             <CardContent className="p-6">
               {isFollowUp && (
@@ -175,7 +233,7 @@ export function MockInterview({ onBack }: MockInterviewProps) {
                   Follow-up Question
                 </Badge>
               )}
-              
+
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
                   <MessageSquare className="w-5 h-5 text-slate-500" />
@@ -188,7 +246,6 @@ export function MockInterview({ onBack }: MockInterviewProps) {
                 </div>
               </div>
 
-              {/* Reveal Answer Button */}
               {!showAnswer && (
                 <Button
                   onClick={() => setShowAnswer(true)}
@@ -199,7 +256,6 @@ export function MockInterview({ onBack }: MockInterviewProps) {
                 </Button>
               )}
 
-              {/* Answer */}
               {showAnswer && activeQuestion.sampleAnswer && (
                 <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex items-center gap-2 mb-3">
@@ -214,7 +270,6 @@ export function MockInterview({ onBack }: MockInterviewProps) {
             </CardContent>
           </Card>
 
-          {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             {!isFollowUp && (
               <Button
@@ -234,9 +289,8 @@ export function MockInterview({ onBack }: MockInterviewProps) {
             </Button>
           </div>
 
-          {/* Progress */}
           <p className="text-center text-sm text-slate-400">
-            Question {answeredQuestions.length + 1} • Practice at your own pace
+            Question {currentNumber} of {totalQuestions} - Practice at your own pace
           </p>
         </div>
       </main>

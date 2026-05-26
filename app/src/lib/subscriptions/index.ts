@@ -189,20 +189,11 @@ export async function openManageSubscription(): Promise<PaymentActionResult> {
 }
 
 /**
- * Restore purchase (for mobile/app stores)
- * Placeholder - implement actual restoration
+ * Restore purchase by opening the Stripe billing portal.
+ * Web users can verify invoices, payment methods, and active subscriptions there.
  */
 export async function restorePurchase(): Promise<PaymentActionResult> {
-  console.warn('restorePurchase: Not yet implemented');
-  
-  // TODO: Implement purchase restoration
-  // 1. Query app store for purchases
-  // 2. Sync with backend
-  
-  return {
-    success: false,
-    error: 'Purchase restoration not yet implemented',
-  };
+  return openManageSubscription();
 }
 
 /**
