@@ -4,6 +4,22 @@ import uuid
 from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
 import db
+from email_service import (
+    send_refund_alert_admin_email,
+    send_support_reply_email,
+    send_support_ticket_admin_email,
+)
+from support_service import (
+    admin_recipients,
+    get_user_support_context,
+    has_cancel_signal,
+    has_refund_signal,
+    json_dumps,
+    normalize_ticket_category,
+    normalize_ticket_row,
+    notify_admins,
+    parse_jsonish,
+)
 
 api_bp = Blueprint('api', __name__)
 
@@ -560,6 +576,7 @@ def update_table(table_name):
         'broadcast_messages', 'site_announcements', 'site_trust_snippets',
         'site_content_blocks', 'site_verification_codes', 'promo_codes',
         'pdf_download_events', 'answer_example_candidates', 'refund_requests',
+        'support_tickets',
         'ad_settings', 'seo_settings', 'seo_expansion_pages', 'seo_expansion_settings',
     }
     if table_name in admin_only_update_tables and user.get('role') not in ('admin', 'superadmin'):
@@ -684,8 +701,8 @@ def admin_system_status():
             'provider': 'anthropic',
             'label': 'Anthropic',
             'configured': bool(os.getenv('ANTHROPIC_API_KEY')),
-            'defaultModel': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-5-sonnet-latest'),
-            'modelCount': 2,
+            'defaultModel': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-haiku-20240307'),
+            'modelCount': 3,
         },
         {
             'provider': 'deepseek',
@@ -839,6 +856,272 @@ def admin_users():
                 'trialUsers': totals.get('trial_users', 0),
                 'usersWithOpenTickets': totals.get('users_with_open_tickets', 0),
             },
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _support_ticket_with_user(ticket_id):
+    return db.query_one(
+        """
+        SELECT t.*, u.email AS user_email
+        FROM support_tickets t
+        JOIN users u ON u.id = t.user_id
+        WHERE t.id = %s
+        """,
+        (ticket_id,),
+    )
+
+
+def _send_support_admin_emails(ticket, context, refund_signal):
+    sent = 0
+    for recipient in admin_recipients():
+        email = recipient.get('email')
+        if not email:
+            continue
+        try:
+            send_support_ticket_admin_email(email, ticket, context)
+            if refund_signal:
+                send_refund_alert_admin_email(email, ticket, context)
+            sent += 1
+        except Exception:
+            pass
+    return sent
+
+
+@api_bp.route('/support/tickets', methods=['POST'])
+@require_auth
+def create_support_ticket_endpoint():
+    user = request.current_user
+    data = request.get_json() or {}
+    subject = (data.get('subject') or '').strip()[:200]
+    category = normalize_ticket_category((data.get('category') or 'other').strip())
+    message = (data.get('message') or '').strip()[:6000]
+    ai_summary = (data.get('aiSummary') or data.get('ai_summary') or None)
+    ai_suggested_reply = (data.get('aiSuggestedReply') or data.get('ai_suggested_reply') or None)
+    ai_triage = parse_jsonish(data.get('aiTriage') or data.get('ai_triage'), {})
+
+    if not subject or not message:
+        return jsonify({'error': 'Subject and message are required'}), 400
+
+    context = get_user_support_context(user['id'])
+    refund_signal = has_refund_signal(category, subject, message, ai_triage)
+    cancel_signal = has_cancel_signal(category, subject, message, ai_triage)
+    ai_triage.update({
+        'refundSignal': refund_signal,
+        'cancelSignal': cancel_signal,
+        'refundEligibilityStatus': (context.get('refundEligibility') or {}).get('status'),
+        'retentionOfferEligible': bool((context.get('retentionOffer') or {}).get('eligible')),
+    })
+
+    try:
+        ticket_id = db.call_function('create_support_ticket', (
+            user['id'],
+            subject,
+            category,
+            message,
+            ai_summary,
+            ai_suggested_reply,
+            json_dumps(ai_triage),
+        ))
+        ticket = _support_ticket_with_user(ticket_id)
+        if not ticket:
+            return jsonify({'error': 'Ticket was created but could not be loaded'}), 500
+
+        notify_count = notify_admins(
+            'Refund Review Ticket' if refund_signal else 'New Support Ticket',
+            f'{user["email"]}: {subject}',
+            {
+                'ticket_id': str(ticket_id),
+                'user_id': user['id'],
+                'category': category,
+                'refund_signal': refund_signal,
+                'cancel_signal': cancel_signal,
+                'refund_eligibility': context.get('refundEligibility'),
+                'retention_offer': context.get('retentionOffer'),
+            },
+            'refund' if refund_signal else 'support',
+        )
+        normalized = normalize_ticket_row(ticket, context)
+        email_count = _send_support_admin_emails(normalized, context, refund_signal)
+
+        return jsonify({
+            'success': True,
+            'ticket': normalized,
+            'adminNotificationsCreated': notify_count,
+            'adminEmailsSent': email_count,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/admin/support/tickets', methods=['GET', 'POST'])
+@require_admin
+def admin_support_tickets():
+    data = request.get_json(silent=True) or {}
+    status_filter = request.args.get('status') or data.get('status') or 'active'
+    limit = request.args.get('limit', data.get('limit', 100), type=int) if request.method == 'GET' else int(data.get('limit', 100) or 100)
+    limit = max(1, min(limit, 250))
+
+    conditions = []
+    params = []
+    if status_filter == 'active':
+        conditions.append("t.status IN ('open', 'replied')")
+    elif status_filter in ('open', 'replied', 'closed'):
+        conditions.append('t.status = %s')
+        params.append(status_filter)
+
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ''
+    rows = db.query_all(
+        f"""
+        SELECT t.*, u.email AS user_email
+        FROM support_tickets t
+        JOIN users u ON u.id = t.user_id
+        {where_sql}
+        ORDER BY
+          CASE t.status WHEN 'open' THEN 0 WHEN 'replied' THEN 1 ELSE 2 END,
+          t.created_at DESC
+        LIMIT %s
+        """,
+        params + [limit],
+    )
+
+    tickets = []
+    for row in rows:
+        context = get_user_support_context(str(row['user_id']))
+        tickets.append(normalize_ticket_row(row, context))
+
+    return jsonify({
+        'tickets': tickets,
+        'counts': {
+            'open': sum(1 for ticket in tickets if ticket['status'] == 'open'),
+            'replied': sum(1 for ticket in tickets if ticket['status'] == 'replied'),
+            'closed': sum(1 for ticket in tickets if ticket['status'] == 'closed'),
+            'refundSignals': sum(1 for ticket in tickets if ticket.get('refundSignal')),
+        },
+    })
+
+
+@api_bp.route('/admin/support/tickets/<ticket_id>/reply', methods=['POST'])
+@require_admin
+def admin_reply_support_ticket(ticket_id):
+    user = request.current_user
+    data = request.get_json() or {}
+    reply = (data.get('reply') or '').strip()
+    if not reply:
+        return jsonify({'error': 'Reply is required'}), 400
+
+    ticket = _support_ticket_with_user(ticket_id)
+    if not ticket:
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    try:
+        updated = db.call_function('reply_to_support_ticket', (ticket_id, user['id'], reply))
+        if not updated:
+            return jsonify({'error': 'Ticket could not be updated'}), 500
+        refreshed = _support_ticket_with_user(ticket_id)
+        try:
+            send_support_reply_email(refreshed['user_email'], refreshed, reply)
+        except Exception:
+            pass
+        context = get_user_support_context(str(refreshed['user_id']))
+        return jsonify({'success': True, 'ticket': normalize_ticket_row(refreshed, context)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/admin/support/tickets/<ticket_id>/close', methods=['POST'])
+@require_admin
+def admin_close_support_ticket(ticket_id):
+    ticket = _support_ticket_with_user(ticket_id)
+    if not ticket:
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    try:
+        refreshed = db.execute_returning(
+            """
+            UPDATE support_tickets
+            SET status = 'closed', closed_at = now(), updated_at = now()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (ticket_id,),
+        )
+        try:
+            db.call_function('create_user_notification', (
+                str(ticket['user_id']),
+                'support',
+                'Support Ticket Closed',
+                f'Your support ticket "{ticket["subject"]}" has been closed.',
+                None,
+                json_dumps({'ticket_id': ticket_id}),
+            ))
+        except Exception:
+            pass
+        refreshed['user_email'] = ticket['user_email']
+        context = get_user_support_context(str(refreshed['user_id']))
+        return jsonify({'success': True, 'ticket': normalize_ticket_row(refreshed, context)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/admin/memory-status', methods=['GET'])
+@require_admin
+def admin_memory_status():
+    try:
+        answer_stats = db.query_one(
+            """
+            SELECT
+              COUNT(*) AS total_candidates,
+              COUNT(*) FILTER (WHERE review_status = 'pending') AS pending_review,
+              COUNT(*) FILTER (WHERE review_status = 'approved') AS approved_count,
+              COUNT(*) FILTER (WHERE approved_for_publication = true) AS approved_for_publication,
+              COUNT(*) FILTER (WHERE published_slug IS NOT NULL) AS published_examples,
+              COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS captured_today
+            FROM answer_example_candidates
+            """
+        ) or {}
+        page_stats = db.query_one(
+            """
+            SELECT
+              COUNT(*) AS total_pages,
+              COUNT(*) FILTER (WHERE status = 'approved') AS approved_pages,
+              COUNT(*) FILTER (WHERE is_published = true) AS published_pages,
+              COUNT(*) FILTER (WHERE include_in_sitemap = true) AS sitemap_pages,
+              COUNT(*) FILTER (WHERE noindex_override = true) AS noindex_pages
+            FROM seo_expansion_pages
+            """
+        ) or {}
+        question_stats = db.query_one(
+            """
+            SELECT
+              COUNT(*) AS tracked_question_states,
+              COUNT(DISTINCT user_id) AS users_with_question_state
+            FROM question_states
+            WHERE COALESCE(comfort_status, 'not-seen') <> 'not-seen'
+               OR is_saved_for_later = true
+            """
+        ) or {}
+        plan_rows = db.query_all(
+            """
+            SELECT plan_type, name, max_turns_per_session, max_sessions_per_day,
+                   can_use_ai, can_choose_provider, can_choose_model
+            FROM plan_config
+            ORDER BY CASE plan_type
+              WHEN 'trial' THEN 0 WHEN 'monthly' THEN 1
+              WHEN 'interviewPass' THEN 2 WHEN 'lifetime' THEN 3 ELSE 4 END
+            """
+        )
+        return jsonify({
+            'answerCandidates': answer_stats,
+            'seoExpansionPages': page_stats,
+            'questionStateIndex': question_stats,
+            'planLimits': plan_rows,
+            'notes': [
+                'AI interview answers are sanitized and stored as answer_example_candidates for manual admin review.',
+                'Approved answer candidates can be promoted later, but original private answers are not published automatically.',
+                'SEO expansion pages remain noindex/sitemap-gated until approved and published.',
+            ],
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

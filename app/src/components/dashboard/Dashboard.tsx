@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { NotificationPanel } from '@/components/notifications';
 import { SupportTicketPanel } from '@/components/support';
+import { PlanStatusPanel } from '@/components/entitlements/PlanStatusPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -100,12 +101,13 @@ export function Dashboard({
     hasPremium,
     isLoadingServer,
     upgradeToLifetime,
+    startRetentionOffer,
     cancelPlanRenewal,
     resumePlanRenewal,
   } = usePricing();
   const [lastTopic] = useLocalStorage<string | null>('interview-last-topic', null);
   const [milestones] = useLocalStorage('interview-timeline-v2', []);
-  const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | null>(null);
+  const [billingAction, setBillingAction] = useState<'cancel' | 'resume' | 'lifetime' | 'retention' | null>(null);
   const [billingMessage, setBillingMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundReason, setRefundReason] = useState<RefundReason>('not_satisfied');
@@ -298,6 +300,7 @@ export function Dashboard({
   const canUpgradeToLifetime = hasPremium && currentPlanType !== 'lifetime';
   const canCancelMonthly = currentPlanType === 'monthly' && subscriptionStatus === 'active';
   const canResumeMonthly = currentPlanType === 'monthly' && subscriptionStatus === 'canceled';
+  const canUseRetentionOffer = currentPlanType === 'monthly' && ['active', 'canceled', 'past_due', 'grace_period'].includes(subscriptionStatus);
   const formatBillingDate = (date: string | null | undefined) => {
     if (!date) return null;
     try {
@@ -347,6 +350,18 @@ export function Dashboard({
     const result = await upgradeToLifetime();
     if (!result.success) {
       setBillingMessage({ tone: 'error', text: result.error || 'Unable to start lifetime checkout.' });
+      setBillingAction(null);
+    }
+  };
+  const runRetentionOffer = async () => {
+    setBillingAction('retention');
+    setBillingMessage(null);
+    const result = await startRetentionOffer();
+    if (!result.success) {
+      setBillingMessage({
+        tone: 'error',
+        text: result.error || 'Unable to start the lower-cost 90-day pass checkout.',
+      });
       setBillingAction(null);
     }
   };
@@ -605,6 +620,21 @@ export function Dashboard({
                     <RefreshCw className="w-4 h-4 mr-2" />
                   )}
                   Resume monthly renewal
+                </Button>
+              )}
+              {canUseRetentionOffer && (
+                <Button
+                  variant="outline"
+                  onClick={runRetentionOffer}
+                  disabled={billingAction !== null}
+                  className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                >
+                  {billingAction === 'retention' ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-4 h-4 mr-2" />
+                  )}
+                  Switch to 90-day pass
                 </Button>
               )}
               {hasPremium && (
@@ -907,6 +937,9 @@ export function Dashboard({
             </CardContent>
           </Card>
 
+          {/* AI Usage and Plan Limits */}
+          <PlanStatusPanel onUpgrade={onUpgrade} className="md:col-span-1" />
+
           {/* Notifications Panel */}
           <NotificationPanel className="md:col-span-1" />
 
@@ -926,6 +959,11 @@ export function Dashboard({
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Choose the reason that matches the facts. Unauthorized or unclear purchase claims are prioritized, and refunds are not issued automatically.
             </div>
+            {canUseRetentionOffer && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                Before submitting, you can switch to a lower-cost 90-day pass from the dashboard if cost is the main reason.
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="refund-reason">Reason</Label>
               <Select value={refundReason} onValueChange={(value) => setRefundReason(value as RefundReason)}>

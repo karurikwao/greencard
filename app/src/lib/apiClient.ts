@@ -291,6 +291,7 @@ export const apiClient = {
   async invokeFunction<T = unknown>(name: string, body: Record<string, unknown> = {}) {
     const routeMap: Record<string, string> = {
       'create-checkout-session': '/api/stripe/create-checkout-session',
+      'create-retention-checkout-session': '/api/stripe/create-retention-checkout-session',
       'confirm-checkout-session': '/api/stripe/confirm-checkout-session',
       'create-customer-portal': '/api/stripe/create-customer-portal',
       'cancel-subscription': '/api/stripe/cancel-subscription',
@@ -299,6 +300,9 @@ export const apiClient = {
       'generate-pdf-signed-url': '/api/pdf/generate-signed-url',
       'ai-interview-turn': '/api/ai/interview-turn',
       'support-ai-assist': '/api/ai/support-assist',
+      'create-support-ticket': '/api/support/tickets',
+      'admin-support-tickets': '/api/admin/support/tickets',
+      'admin-support-ticket-draft': '/api/ai/support-ticket-draft',
       'process-refund': '/api/process-refund',
       'trigger-coolify-rebuild': '/api/rpc/trigger-rebuild',
       'admin-users': '/api/admin/users',

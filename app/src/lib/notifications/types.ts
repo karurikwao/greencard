@@ -88,6 +88,37 @@ export interface SupportTicket {
 
 export interface AdminSupportTicket extends SupportTicket {
   userEmail: string;
+  refundSignal?: boolean;
+  cancelSignal?: boolean;
+  refundEligibility?: {
+    status?: string;
+    note?: string;
+    daysSincePurchase?: number | null;
+    questionsCompleted?: number;
+    mockInterviewsCompleted?: number;
+    downloadReviewFlag?: string;
+  };
+  retentionOffer?: {
+    eligible: boolean;
+    label: string;
+    amountCents: number;
+    amount: number;
+    currency: string;
+    message: string;
+  };
+  subscription?: {
+    planType?: string;
+    planLabel?: string;
+    status?: string;
+  };
+  usage?: {
+    questionsCompleted?: number;
+    mockInterviewsCompleted?: number;
+    totalPdfDownloads?: number;
+    uniquePdfsDownloaded?: number;
+    downloadReviewFlag?: string;
+    downloadReviewNote?: string;
+  };
 }
 
 export interface CreateTicketInput {
@@ -115,6 +146,23 @@ export interface SupportAiAssistResponse {
   provider: string;
   model?: string | null;
   fallback?: boolean;
+  providerFallback?: boolean;
+  requestedProvider?: string;
+  requestedModel?: string | null;
+}
+
+export interface AdminSupportDraftResponse {
+  reply: string;
+  summary: string;
+  urgency: 'low' | 'normal' | 'high';
+  refundEligibilityStatus?: string;
+  retentionOfferRecommended?: boolean;
+  notifyAdmin?: boolean;
+  internalNotes?: string;
+  provider: string;
+  model?: string | null;
+  fallback?: boolean;
+  providerFallback?: boolean;
 }
 
 export const TICKET_CATEGORIES: { value: TicketCategory; label: string }[] = [

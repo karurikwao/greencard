@@ -40,12 +40,23 @@ export const REGISTERED_MODELS: AIModelOption[] = [
   // Anthropic Models
   {
     provider: 'anthropic',
+    modelId: 'claude-3-haiku-20240307',
+    displayName: 'Claude Haiku',
+    description: 'Fast, lower-cost model for support and interview practice',
+    tier: 'budget',
+    enabled: true,
+    defaultForProvider: true,
+    maxTokens: 4096,
+    contextWindow: 200000,
+  },
+  {
+    provider: 'anthropic',
     modelId: 'claude-sonnet-4-5-20251022',
     displayName: 'Claude Sonnet 4.5',
     description: 'Balanced performance and quality',
     tier: 'standard',
     enabled: true,
-    defaultForProvider: true,
+    defaultForProvider: false,
     maxTokens: 4096,
     contextWindow: 200000,
   },
@@ -126,8 +137,8 @@ export const PROVIDER_CONFIGS: Record<AIProvider, AIProviderConfig> = {
     provider: 'anthropic',
     enabled: true,
     apiKeyEnvVar: 'ANTHROPIC_API_KEY', // Server-side only (no VITE_ prefix)
-    defaultModel: 'claude-sonnet-4-5-20251022',
-    fallbackModel: 'claude-opus-4-5-20251101',
+    defaultModel: 'claude-3-haiku-20240307',
+    fallbackModel: 'claude-sonnet-4-5-20251022',
   },
   deepseek: {
     provider: 'deepseek',

@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
 import db
 from email_service import send_purchase_confirmation_email
+from support_service import build_retention_offer
 
 stripe_bp = Blueprint('stripe', __name__)
 
@@ -383,6 +384,120 @@ def create_checkout_session():
         response['appliedDiscount'] = discount_info
 
     return jsonify(response)
+
+
+@stripe_bp.route('/create-retention-checkout-session', methods=['POST'])
+@require_auth
+def create_retention_checkout_session():
+    _refresh_stripe_key()
+    user = request.current_user
+    data = request.get_json() or {}
+
+    if not stripe.api_key:
+        return jsonify({'error': 'Stripe secret key is not configured', 'code': 'STRIPE_NOT_CONFIGURED'}), 503
+
+    sub = db.query_one(
+        """SELECT plan_type, status, provider_customer_id, provider_subscription_id
+           FROM user_subscriptions WHERE user_id = %s""",
+        (user['id'],),
+    )
+    offer = build_retention_offer(
+        sub.get('plan_type') if sub else None,
+        sub.get('status') if sub else None,
+    )
+    if not offer.get('eligible'):
+        return jsonify({
+            'error': 'This account is not eligible for the retention offer.',
+            'code': 'RETENTION_NOT_ELIGIBLE',
+        }), 400
+
+    customer_id = sub.get('provider_customer_id') if sub else None
+    if not customer_id:
+        try:
+            customer = stripe.Customer.create(
+                email=user['email'],
+                metadata={'user_id': user['id'], 'app_source': 'interview_ready'}
+            )
+            customer_id = customer.id
+            db.execute(
+                """INSERT INTO user_subscriptions (user_id, provider, provider_customer_id, updated_at)
+                   VALUES (%s, 'stripe', %s, now())
+                   ON CONFLICT (user_id) DO UPDATE SET provider_customer_id = EXCLUDED.provider_customer_id, updated_at = now()""",
+                (user['id'], customer_id)
+            )
+        except stripe.error.StripeError as e:
+            return jsonify({'error': f'Failed to create customer: {str(e)}'}), 500
+
+    frontend_url = os.getenv('FRONTEND_URL', request.headers.get('Origin', 'http://localhost:5173'))
+    success_url = data.get('successUrl') or f"{frontend_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = data.get('cancelUrl') or f"{frontend_url}/dashboard?retention=canceled"
+    if '{CHECKOUT_SESSION_ID}' not in success_url:
+        separator = '&' if '?' in success_url else '?'
+        success_url = f"{success_url}{separator}session_id={{CHECKOUT_SESSION_ID}}"
+
+    metadata = _checkout_metadata(user['id'], 'interviewPass', {
+        'retention_offer': 'true',
+        'retention_from_plan': sub.get('plan_type') if sub else 'monthly',
+        'retention_from_status': sub.get('status') if sub else '',
+        'retention_terms': (
+            f"${offer['amount']:.2f} one-time payment for 90 days of premium access. "
+            "No renewal is created."
+        ),
+    })
+
+    line_item = {
+        'quantity': 1,
+        'price_data': {
+            'currency': offer.get('currency', 'usd'),
+            'unit_amount': int(offer.get('amountCents') or 1900),
+            'product_data': {
+                'name': offer.get('label') or '90-Day Interview Pass Retention Offer',
+                'description': 'Lower-cost 90-day premium access for users considering cancellation or refund.',
+                'metadata': {
+                    'app_source': 'interview_ready',
+                    'plan_type': 'interviewPass',
+                    'retention_offer': 'true',
+                },
+            },
+        },
+    }
+
+    configured_retention_price = os.getenv('STRIPE_PRICE_ID_RETENTION_INTERVIEW_PASS')
+    if configured_retention_price:
+        line_item = {'price': configured_retention_price, 'quantity': 1}
+
+    try:
+        session = stripe.checkout.Session.create(
+            customer=customer_id,
+            mode='payment',
+            success_url=success_url,
+            cancel_url=cancel_url,
+            line_items=[line_item],
+            client_reference_id=user['id'],
+            metadata=metadata,
+            custom_text={
+                'submit': {
+                    'message': (
+                        f"This is a one-time ${offer['amount']:.2f} payment for 90 days of premium access. "
+                        "It does not create a monthly renewal. Refund requests remain subject to the refund policy."
+                    ),
+                },
+                'after_submit': {
+                    'message': 'A receipt and purchase confirmation will be sent by email after payment is complete.',
+                },
+            },
+            payment_intent_data={
+                'description': f"{offer.get('label')} - one-time ${offer['amount']:.2f} for 90 days",
+                'metadata': metadata,
+            },
+        )
+        return jsonify({
+            'checkoutUrl': session.url,
+            'sessionId': session.id,
+            'offer': offer,
+        })
+    except stripe.error.StripeError as e:
+        return jsonify({'error': f'Failed to create retention checkout session: {str(e)}'}), 500
 
 
 @stripe_bp.route('/confirm-checkout-session', methods=['POST'])

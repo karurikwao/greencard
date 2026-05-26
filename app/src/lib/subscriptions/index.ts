@@ -125,7 +125,9 @@ export {
 export {
   createCheckoutSession,
   confirmCheckoutSession,
+  createRetentionCheckoutSession,
   redirectToCheckout,
+  redirectToRetentionOffer,
   createCustomerPortalSession,
   redirectToCustomerPortal,
   cancelSubscription,

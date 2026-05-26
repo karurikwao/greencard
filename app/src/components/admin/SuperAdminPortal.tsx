@@ -32,7 +32,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Mail
+  Mail,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,6 +52,22 @@ import { AdminRefundDashboard } from '@/components/refunds';
 import { PAID_PLANS } from '@/lib/plans';
 import { fetchAdminSystemStatus, type AdminSystemStatus } from '@/lib/admin/systemStatus';
 import { fetchAdminUsers, type AdminUserSnapshot, type AdminUsersResponse } from '@/lib/admin/users';
+import { fetchAdminMemoryStatus, type AdminMemoryStatus } from '@/lib/admin/memory';
+import {
+  closeTicket,
+  draftSupportTicketReply,
+  getOpenTicketsForAdmin,
+  replyToTicket,
+} from '@/lib/notifications/api';
+import type { AdminSupportTicket } from '@/lib/notifications';
+import {
+  getCandidateDetails,
+  getCandidateStats,
+  getPendingCandidates,
+  updateCandidateReview,
+  type AdminCandidateView,
+  type CandidateStats,
+} from '@/lib/answer-candidates/api';
 
 interface SuperAdminPortalProps {
   onClose: () => void;
@@ -68,6 +85,30 @@ function useAdminSystemStatus() {
       setStatus(await fetchAdminSystemStatus());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load system status');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return { status, isLoading, error, refresh };
+}
+
+function useAdminMemoryStatus() {
+  const [status, setStatus] = useState<AdminMemoryStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setStatus(await fetchAdminMemoryStatus());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load memory status');
     } finally {
       setIsLoading(false);
     }
@@ -954,6 +995,7 @@ function AdsTab() {
 // AI Config Tab
 function AIConfigTab() {
   const { status, isLoading, error, refresh } = useAdminSystemStatus();
+  const memory = useAdminMemoryStatus();
 
   return (
     <div className="space-y-6">
@@ -1027,23 +1069,65 @@ function AIConfigTab() {
           <CardTitle className="text-base">Usage Limits</CardTitle>
           <CardDescription>Current plan limits used by the entitlement system.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+        <CardContent className="space-y-3">
+          {(memory.status?.planLimits || []).map((plan) => (
+            <div key={plan.plan_type} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
               <div>
-                <div className="font-medium text-slate-800">Free Trial</div>
-                <div className="text-sm text-slate-500">5 turns per session, 1 session per day</div>
+                <div className="font-medium text-slate-800">{plan.name}</div>
+                <div className="text-sm text-slate-500">
+                  {plan.max_turns_per_session} turns per session, {plan.max_sessions_per_day} sessions per day
+                </div>
               </div>
-              <Badge variant="secondary">Limited</Badge>
+              <Badge variant={plan.can_choose_provider ? 'default' : 'secondary'}>
+                {plan.can_choose_provider ? 'Provider choice' : 'Default AI'}
+              </Badge>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-slate-800">Paid Plans</div>
-                <div className="text-sm text-slate-500">20-50 turns per session depending on plan</div>
-              </div>
-              <Badge className="bg-emerald-600">Premium</Badge>
+          ))}
+          {!memory.isLoading && !memory.status?.planLimits.length && (
+            <div className="text-sm text-slate-500">Plan limits are unavailable.</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Memory Bank and Indexing</CardTitle>
+              <CardDescription>Live status for captured answers and expansion pages.</CardDescription>
             </div>
+            <Button variant="outline" size="sm" onClick={memory.refresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <StatusLoadState isLoading={memory.isLoading} error={memory.error} onRefresh={memory.refresh} />
+          {memory.status && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Captured answers</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">{memory.status.answerCandidates.total_candidates || 0}</div>
+                  <div className="text-xs text-slate-500">{memory.status.answerCandidates.pending_review || 0} pending review</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Approved for public use</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">{memory.status.answerCandidates.approved_for_publication || 0}</div>
+                  <div className="text-xs text-slate-500">{memory.status.answerCandidates.published_examples || 0} published examples</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expansion pages</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">{memory.status.seoExpansionPages.published_pages || 0}</div>
+                  <div className="text-xs text-slate-500">{memory.status.seoExpansionPages.sitemap_pages || 0} in sitemap</div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                User answers are captured silently, sanitized, and queued for manual review. Original answers stay private unless an admin opens a candidate detail.
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1292,15 +1376,30 @@ function BroadcastsTab() {
   );
 }
 
-// Support Tickets Tab
-function SupportTicketsTab() {
-  const [tickets, setTickets] = useState([
-    { id: '1', user_email: 'user@example.com', subject: 'Billing question', category: 'billing', message: 'I was charged twice this month.', status: 'open', created_at: '2024-03-15T10:00:00Z', admin_reply: null },
-    { id: '2', user_email: 'john@example.com', subject: 'App keeps crashing', category: 'technical', message: 'The app crashes when I try to start a mock interview.', status: 'replied', created_at: '2024-03-14T15:30:00Z', admin_reply: 'Thanks for reporting. We are looking into this issue.' },
-    { id: '3', user_email: 'sarah@example.com', subject: 'How to reset password', category: 'account', message: 'I forgot my password and need to reset it.', status: 'closed', created_at: '2024-03-10T09:00:00Z', admin_reply: 'Please use the forgot password link on the login page.' },
-  ]);
-  const [selectedTicket, setSelectedTicket] = useState<typeof tickets[0] | null>(null);
+function LiveSupportTicketsTab() {
+  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<AdminSupportTicket | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [isReplying, setIsReplying] = useState(false);
+  const [isDrafting, setIsDrafting] = useState(false);
+
+  const loadTickets = async () => {
+    setIsLoading(true);
+    setError(null);
+    const result = await getOpenTicketsForAdmin();
+    if (result.success && result.data) {
+      setTickets(result.data);
+    } else {
+      setError(result.error || 'Unable to load support tickets');
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    loadTickets();
+  }, []);
 
   const statusColors: Record<string, string> = {
     open: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -1310,59 +1409,107 @@ function SupportTicketsTab() {
 
   const categoryLabels: Record<string, string> = {
     billing: 'Billing',
+    refund: 'Refund',
     technical: 'Technical',
     account: 'Account',
     feature_request: 'Feature Request',
     other: 'Other',
   };
 
-  const handleReply = (ticketId: string) => {
-    if (!replyText.trim()) return;
-    setTickets(prev => prev.map(t =>
-      t.id === ticketId ? { ...t, status: 'replied', admin_reply: replyText } : t
-    ));
-    setReplyText('');
-    setSelectedTicket(null);
+  const openReplyDialog = (ticket: AdminSupportTicket) => {
+    setSelectedTicket(ticket);
+    setReplyText(ticket.aiSuggestedReply || ticket.adminReply || '');
   };
 
-  const handleClose = (ticketId: string) => {
-    setTickets(prev => prev.map(t =>
-      t.id === ticketId ? { ...t, status: 'closed' } : t
-    ));
-    setSelectedTicket(null);
+  const handleDraft = async () => {
+    if (!selectedTicket) return;
+    setIsDrafting(true);
+    const result = await draftSupportTicketReply(selectedTicket.id);
+    if (result.success && result.data) {
+      setReplyText(result.data.reply);
+      setSelectedTicket(prev => prev ? {
+        ...prev,
+        aiSummary: result.data?.summary || prev.aiSummary,
+        aiSuggestedReply: result.data?.reply || prev.aiSuggestedReply,
+        aiTriage: {
+          ...(prev.aiTriage || {}),
+          adminDraft: {
+            provider: result.data?.provider,
+            model: result.data?.model,
+            urgency: result.data?.urgency,
+            retentionOfferRecommended: result.data?.retentionOfferRecommended,
+          },
+        },
+      } : prev);
+    } else {
+      setError(result.error || 'Unable to draft a reply');
+    }
+    setIsDrafting(false);
+  };
+
+  const handleReply = async (ticketId: string) => {
+    if (!replyText.trim()) return;
+    setIsReplying(true);
+    const result = await replyToTicket(ticketId, replyText.trim());
+    if (result.success) {
+      await loadTickets();
+      setReplyText('');
+      setSelectedTicket(null);
+    } else {
+      setError(result.error || 'Unable to send reply');
+    }
+    setIsReplying(false);
+  };
+
+  const handleClose = async (ticketId: string) => {
+    const result = await closeTicket(ticketId);
+    if (result.success) {
+      await loadTickets();
+      setSelectedTicket(null);
+    } else {
+      setError(result.error || 'Unable to close ticket');
+    }
   };
 
   const openCount = tickets.filter(t => t.status === 'open').length;
   const repliedCount = tickets.filter(t => t.status === 'replied').length;
+  const refundSignalCount = tickets.filter(t => t.refundSignal).length;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Open Tickets" value={openCount.toString()} change="" trend="up" icon={MessageSquare} />
         <StatCard title="Awaiting Reply" value={repliedCount.toString()} change="" trend="up" icon={Activity} />
-        <StatCard title="Total Today" value={tickets.length.toString()} change="" trend="up" icon={Users} />
+        <StatCard title="Refund Signals" value={refundSignalCount.toString()} change="" trend="up" icon={AlertCircle} />
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Support Tickets</CardTitle>
-              <CardDescription>Manage user support requests</CardDescription>
+              <CardDescription>Live support requests, AI summaries, refund signals, and retention offers.</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                {openCount} Open
-              </Badge>
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                {repliedCount} Replied
-              </Badge>
-            </div>
+            <Button variant="outline" size="sm" onClick={loadTickets}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg">
-            {tickets.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-500">
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                Loading tickets...
+              </div>
+            ) : tickets.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="font-medium">No support tickets</p>
@@ -1372,22 +1519,35 @@ function SupportTicketsTab() {
               <div className="divide-y">
                 {tickets.map((ticket) => (
                   <div key={ticket.id} className="p-4 flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-medium text-slate-800">{ticket.subject}</h4>
                         <Badge variant="outline" className={statusColors[ticket.status]}>
                           {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
                         </Badge>
+                        {ticket.refundSignal && (
+                          <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
+                            Refund review
+                          </Badge>
+                        )}
+                        {ticket.retentionOffer?.eligible && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            Save offer
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-slate-600 mt-1 line-clamp-2">{ticket.message}</p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span>From: {ticket.user_email}</span>
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>From: {ticket.userEmail}</span>
                         <span>Category: {categoryLabels[ticket.category]}</span>
-                        <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
+                        <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                       </div>
+                      {ticket.aiSummary && (
+                        <p className="mt-2 text-xs text-slate-500 line-clamp-1">AI summary: {ticket.aiSummary}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedTicket(ticket)}>
+                      <Button variant="outline" size="sm" onClick={() => openReplyDialog(ticket)}>
                         {ticket.status === 'open' ? 'Reply' : 'View'}
                       </Button>
                       {ticket.status !== 'closed' && (
@@ -1404,30 +1564,65 @@ function SupportTicketsTab() {
         </CardContent>
       </Card>
 
-      {/* Reply Dialog */}
       {selectedTicket && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-lg">
+          <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
-              <CardTitle>Reply to Ticket</CardTitle>
+              <CardTitle>{selectedTicket.subject}</CardTitle>
               <CardDescription>
-                {selectedTicket.subject} • {selectedTicket.user_email}
+                {selectedTicket.userEmail} - {categoryLabels[selectedTicket.category]} - {selectedTicket.status}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-slate-50 p-3 rounded-lg">
-                <p className="text-sm text-slate-700">{selectedTicket.message}</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedTicket.message}</p>
               </div>
-              {selectedTicket.admin_reply && (
+              {(selectedTicket.refundSignal || selectedTicket.retentionOffer?.eligible) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                    <p className="font-medium">Refund signal</p>
+                    <p className="mt-1">{selectedTicket.refundEligibility?.status || 'review'} - {selectedTicket.refundEligibility?.note || 'Manual review recommended.'}</p>
+                    <p className="mt-1 text-xs">
+                      {selectedTicket.usage?.questionsCompleted || 0} questions, {selectedTicket.usage?.totalPdfDownloads || 0} PDF downloads
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    <p className="font-medium">Retention option</p>
+                    <p className="mt-1">
+                      {selectedTicket.retentionOffer?.eligible
+                        ? `${selectedTicket.retentionOffer.label} at $${selectedTicket.retentionOffer.amount.toFixed(2)}`
+                        : 'No lower-cost offer recommended for this plan.'}
+                    </p>
+                    <p className="mt-1 text-xs">{selectedTicket.subscription?.planLabel || 'Plan unknown'} - {selectedTicket.subscription?.status || 'unknown'}</p>
+                  </div>
+                </div>
+              )}
+              {selectedTicket.aiSummary && (
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <p className="text-xs text-blue-600 font-medium mb-1">AI Summary</p>
+                  <p className="text-sm text-slate-700">{selectedTicket.aiSummary}</p>
+                </div>
+              )}
+              {selectedTicket.adminReply && (
                 <div className="bg-blue-50 p-3 rounded-lg">
                   <p className="text-xs text-blue-600 font-medium mb-1">Previous Reply:</p>
-                  <p className="text-sm text-slate-700">{selectedTicket.admin_reply}</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedTicket.adminReply}</p>
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Your Reply</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Your Reply</Label>
+                  <Button variant="outline" size="sm" onClick={handleDraft} disabled={isDrafting}>
+                    {isDrafting ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    AI Draft
+                  </Button>
+                </div>
                 <textarea
-                  className="w-full min-h-[100px] px-3 py-2 rounded-md border border-slate-200 text-sm"
+                  className="w-full min-h-[130px] px-3 py-2 rounded-md border border-slate-200 text-sm"
                   placeholder="Type your response..."
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
@@ -1438,7 +1633,8 @@ function SupportTicketsTab() {
               <Button variant="outline" onClick={() => setSelectedTicket(null)}>
                 Cancel
               </Button>
-              <Button onClick={() => handleReply(selectedTicket.id)} className="bg-slate-700 hover:bg-slate-800">
+              <Button onClick={() => handleReply(selectedTicket.id)} disabled={isReplying || !replyText.trim()} className="bg-slate-700 hover:bg-slate-800">
+                {isReplying && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
                 Send Reply
               </Button>
             </CardContent>
@@ -1449,17 +1645,27 @@ function SupportTicketsTab() {
   );
 }
 
-// Answer Examples Tab
-function AnswerExamplesTab() {
-  const [candidates, setCandidates] = useState([
-    { id: '1', question_prompt: 'How did you meet your spouse?', category: 'met_online', answer_pattern: 'met_online', sanitized_answer: 'We met on a dating app about three years ago. We talked for a few weeks before meeting in person at a coffee shop downtown.', quality_score: 'usable_example', review_status: 'pending', created_at: '2024-03-15T10:00:00Z', user_email: 'user1@example.com' },
-    { id: '2', question_prompt: 'Tell me about your wedding ceremony.', category: 'wedding_courthouse', answer_pattern: 'wedding_courthouse', sanitized_answer: 'We had a simple ceremony at the courthouse with just our parents and siblings present. It was intimate and perfect for us.', quality_score: 'strong_story_structure', review_status: 'pending', created_at: '2024-03-14T15:30:00Z', user_email: 'user2@example.com' },
-    { id: '3', question_prompt: 'How did you meet your spouse?', category: 'met_at_work', answer_pattern: 'met_at_work', sanitized_answer: 'We worked at the same company. I was in marketing and they were in sales. We met at a team building event.', quality_score: 'usable_example', review_status: 'approved', created_at: '2024-03-10T09:00:00Z', user_email: 'user3@example.com' },
-  ]);
-  const [stats] = useState({ totalCandidates: 3, pendingReview: 2, approvedCount: 1, rejectedCount: 0, needsEditCount: 0, todayCount: 0 });
-  const [selectedCandidate, setSelectedCandidate] = useState<typeof candidates[0] | null>(null);
+// Support Tickets Tab
+function SupportTicketsTab() {
+  return <LiveSupportTicketsTab />;
+}
+
+function LiveAnswerExamplesTab() {
+  const [candidates, setCandidates] = useState<AdminCandidateView[]>([]);
+  const [stats, setStats] = useState<CandidateStats>({
+    totalCandidates: 0,
+    pendingReview: 0,
+    approvedCount: 0,
+    rejectedCount: 0,
+    needsEditCount: 0,
+    todayCount: 0,
+  });
+  const [selectedCandidate, setSelectedCandidate] = useState<AdminCandidateView | null>(null);
+  const [candidateDetails, setCandidateDetails] = useState<{ originalAnswer: string; qualityReason?: string | null } | null>(null);
   const [reviewerNotes, setReviewerNotes] = useState('');
   const [showOriginal, setShowOriginal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const statusColors: Record<string, string> = {
     pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -1467,7 +1673,6 @@ function AnswerExamplesTab() {
     rejected: 'bg-red-100 text-red-700 border-red-200',
     needs_edit: 'bg-blue-100 text-blue-700 border-blue-200',
   };
-
   const qualityColors: Record<string, string> = {
     too_short: 'bg-slate-100 text-slate-600',
     usable_example: 'bg-blue-100 text-blue-700',
@@ -1476,72 +1681,120 @@ function AnswerExamplesTab() {
     uncategorized: 'bg-slate-100 text-slate-600',
   };
 
-  const handleReview = (candidateId: string, status: 'approved' | 'rejected' | 'needs_edit') => {
-    setCandidates(prev => prev.map(c =>
-      c.id === candidateId ? { ...c, review_status: status } : c
-    ));
-    setSelectedCandidate(null);
-    setReviewerNotes('');
+  const loadCandidates = async () => {
+    setIsLoading(true);
+    setError(null);
+    const [candidateResult, statsResult] = await Promise.all([
+      getPendingCandidates(100, 0),
+      getCandidateStats(),
+    ]);
+    if (candidateResult.success && candidateResult.data) {
+      setCandidates(candidateResult.data);
+    } else {
+      setError(candidateResult.error || 'Unable to load answer candidates');
+    }
+    if (statsResult.success && statsResult.data) {
+      setStats(statsResult.data);
+    }
+    setIsLoading(false);
   };
 
-  const pendingCount = candidates.filter(c => c.review_status === 'pending').length;
+  useEffect(() => {
+    loadCandidates();
+  }, []);
+
+  const openCandidate = async (candidate: AdminCandidateView) => {
+    setSelectedCandidate(candidate);
+    setReviewerNotes('');
+    setShowOriginal(false);
+    setCandidateDetails(null);
+    const result = await getCandidateDetails(candidate.id);
+    if (result.success && result.data) {
+      setCandidateDetails({
+        originalAnswer: result.data.originalAnswer,
+        qualityReason: result.data.qualityReason,
+      });
+    }
+  };
+
+  const handleReview = async (
+    candidateId: string,
+    status: 'approved' | 'rejected' | 'needs_edit',
+    approvedForPublication = false
+  ) => {
+    const result = await updateCandidateReview(candidateId, status, reviewerNotes, approvedForPublication);
+    if (result.success) {
+      setSelectedCandidate(null);
+      await loadCandidates();
+    } else {
+      setError(result.error || 'Unable to update candidate review');
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Total Candidates" value={stats.totalCandidates.toString()} change="" trend="up" icon={FileText} />
-        <StatCard title="Pending Review" value={pendingCount.toString()} change="" trend="up" icon={AlertCircle} />
+        <StatCard title="Pending Review" value={(stats.pendingReview || candidates.length).toString()} change="" trend="up" icon={AlertCircle} />
         <StatCard title="Approved" value={stats.approvedCount.toString()} change="" trend="up" icon={CheckCircle} />
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Answer Example Candidates</CardTitle>
-              <CardDescription>Review sanitized user answers for potential educational examples</CardDescription>
+              <CardDescription>Sanitized answers captured from AI practice for manual memory-bank review.</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                {pendingCount} Pending
-              </Badge>
-            </div>
+            <Button variant="outline" size="sm" onClick={loadCandidates}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
           <div className="border rounded-lg">
-            {candidates.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-500">
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                Loading answer candidates...
+              </div>
+            ) : candidates.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                <p className="font-medium">No answer candidates yet</p>
-                <p className="text-sm">Answers from AI interviews will appear here for review.</p>
+                <p className="font-medium">No pending answer candidates</p>
+                <p className="text-sm">Captured answers will appear here after AI interview practice.</p>
               </div>
             ) : (
               <div className="divide-y">
                 {candidates.map((candidate) => (
                   <div key={candidate.id} className="p-4 flex items-start justify-between gap-4">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-medium text-slate-800">{candidate.question_prompt}</h4>
-                        <Badge variant="outline" className={statusColors[candidate.review_status]}>
-                          {candidate.review_status.replace('_', ' ')}
+                        <h4 className="font-medium text-slate-800">{candidate.questionPrompt}</h4>
+                        <Badge variant="outline" className={statusColors[candidate.reviewStatus]}>
+                          {candidate.reviewStatus.replace('_', ' ')}
                         </Badge>
-                        <Badge variant="outline" className={qualityColors[candidate.quality_score]}>
-                          {candidate.quality_score.replace('_', ' ')}
+                        <Badge variant="outline" className={qualityColors[candidate.qualityScore] || qualityColors.uncategorized}>
+                          {candidate.qualityScore.replace('_', ' ')}
                         </Badge>
                       </div>
-                      <p className="text-sm text-slate-600 mt-2 line-clamp-2">{candidate.sanitized_answer}</p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span>Pattern: {candidate.answer_pattern}</span>
-                        <span>From: {candidate.user_email}</span>
-                        <span>{new Date(candidate.created_at).toLocaleDateString()}</span>
+                      <p className="text-sm text-slate-600 mt-2 line-clamp-2">{candidate.sanitizedAnswer}</p>
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>Pattern: {candidate.answerPattern}</span>
+                        <span>From: {candidate.userEmail || 'Unknown user'}</span>
+                        <span>{new Date(candidate.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedCandidate(candidate)}>
-                        Review
-                      </Button>
-                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openCandidate(candidate)}>
+                      Review
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1550,45 +1803,43 @@ function AnswerExamplesTab() {
         </CardContent>
       </Card>
 
-      {/* Review Dialog */}
       {selectedCandidate && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <CardTitle>Review Answer Candidate</CardTitle>
-              <CardDescription>
-                {selectedCandidate.question_prompt}
-              </CardDescription>
+              <CardDescription>{selectedCandidate.questionPrompt}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className={statusColors[selectedCandidate.review_status]}>
-                  Status: {selectedCandidate.review_status}
+                <Badge variant="outline" className={statusColors[selectedCandidate.reviewStatus]}>
+                  Status: {selectedCandidate.reviewStatus}
                 </Badge>
-                <Badge variant="outline" className={qualityColors[selectedCandidate.quality_score]}>
-                  Quality: {selectedCandidate.quality_score}
+                <Badge variant="outline" className={qualityColors[selectedCandidate.qualityScore] || qualityColors.uncategorized}>
+                  Quality: {selectedCandidate.qualityScore}
                 </Badge>
-                <Badge variant="outline">
-                  Pattern: {selectedCandidate.answer_pattern}
-                </Badge>
+                <Badge variant="outline">Pattern: {selectedCandidate.answerPattern}</Badge>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-slate-500">SANITIZED ANSWER (for publication)</p>
-                </div>
-                <p className="text-sm text-slate-700">{selectedCandidate.sanitized_answer}</p>
+                <p className="text-xs font-medium text-slate-500 mb-2">SANITIZED ANSWER</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedCandidate.sanitizedAnswer}</p>
+                {candidateDetails?.qualityReason && (
+                  <p className="mt-3 text-xs text-slate-500">{candidateDetails.qualityReason}</p>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                <Switch id="show-original" checked={showOriginal} onCheckedChange={setShowOriginal} />
-                <Label htmlFor="show-original" className="text-sm text-slate-600">Show original answer (private)</Label>
+                <Switch id="show-original-live" checked={showOriginal} onCheckedChange={setShowOriginal} />
+                <Label htmlFor="show-original-live" className="text-sm text-slate-600">Show original answer (private)</Label>
               </div>
 
               {showOriginal && (
                 <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
-                  <p className="text-xs font-medium text-amber-600 mb-2">ORIGINAL ANSWER (ADMIN ONLY - NEVER PUBLISH)</p>
-                  <p className="text-sm text-slate-700">[Original answer would appear here from database]</p>
+                  <p className="text-xs font-medium text-amber-700 mb-2">ORIGINAL ANSWER - ADMIN ONLY</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                    {candidateDetails?.originalAnswer || 'Original answer is loading or unavailable.'}
+                  </p>
                 </div>
               )}
 
@@ -1601,42 +1852,22 @@ function AnswerExamplesTab() {
                   onChange={(e) => setReviewerNotes(e.target.value)}
                 />
               </div>
-
-              <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-700">
-                <p className="font-medium">Publication Safety Check</p>
-                <ul className="list-disc list-inside mt-1 text-xs">
-                  <li>Only the sanitized version would ever be published</li>
-                  <li>Original answer is never exposed publicly</li>
-                  <li>No automatic publication - manual approval required</li>
-                </ul>
-              </div>
             </CardContent>
             <CardContent className="flex justify-end gap-2 pt-0">
               <Button variant="outline" onClick={() => setSelectedCandidate(null)}>
                 Cancel
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => handleReview(selectedCandidate.id, 'needs_edit')}
-                className="text-blue-600 border-blue-200 hover:bg-blue-50"
-              >
+              <Button variant="outline" onClick={() => handleReview(selectedCandidate.id, 'needs_edit')} className="text-blue-600 border-blue-200 hover:bg-blue-50">
                 <AlertCircle className="w-4 h-4 mr-2" />
                 Needs Edit
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => handleReview(selectedCandidate.id, 'rejected')}
-                className="text-red-600 border-red-200 hover:bg-red-50"
-              >
+              <Button variant="outline" onClick={() => handleReview(selectedCandidate.id, 'rejected')} className="text-red-600 border-red-200 hover:bg-red-50">
                 <XCircle className="w-4 h-4 mr-2" />
                 Reject
               </Button>
-              <Button 
-                onClick={() => handleReview(selectedCandidate.id, 'approved')}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
+              <Button onClick={() => handleReview(selectedCandidate.id, 'approved', true)} className="bg-emerald-600 hover:bg-emerald-700">
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Approve
+                Approve for Bank
               </Button>
             </CardContent>
           </Card>
@@ -1644,6 +1875,11 @@ function AnswerExamplesTab() {
       )}
     </div>
   );
+}
+
+// Answer Examples Tab
+function AnswerExamplesTab() {
+  return <LiveAnswerExamplesTab />;
 }
 
 // Helper Components

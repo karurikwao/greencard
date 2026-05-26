@@ -1,7 +1,7 @@
 import hashlib
 import html as html_tools
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -17,7 +17,7 @@ PLAN_LABELS = {
 PLAN_SUMMARIES = {
     'monthly': '$19.99 per month',
     'lifetime': '$79.99 one-time',
-    'interviewPass': '$39.99 one-time',
+    'interviewPass': '90-day one-time access at the price shown in Stripe Checkout',
 }
 
 
@@ -175,4 +175,136 @@ def send_password_reset_message(to_email: str, reset_url: str) -> Dict[str, obje
         text_body,
         tags=[{'name': 'category', 'value': 'password_reset'}],
         idempotency_key=_idempotency_key('password_reset', to_email, reset_url),
+    )
+
+
+def send_support_ticket_admin_email(
+    to_email: str,
+    ticket: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, object]:
+    context = context or {}
+    ticket_id = str(ticket.get('id') or '')
+    user_email = html_tools.escape(str(ticket.get('userEmail') or ticket.get('user_email') or 'Unknown user'))
+    subject_text = str(ticket.get('subject') or 'Support request')
+    category = str(ticket.get('category') or 'other')
+    message = str(ticket.get('message') or '')
+    admin_url = f'{_frontend_url()}/dashboard'
+    refund = context.get('refundEligibility') or {}
+    offer = context.get('retentionOffer') or {}
+
+    refund_line = ''
+    if ticket.get('refundSignal') or category == 'refund':
+        refund_line = (
+            f"<p><strong>Refund review:</strong> {html_tools.escape(str(refund.get('status') or 'review'))} - "
+            f"{html_tools.escape(str(refund.get('note') or 'Manual review recommended.'))}</p>"
+        )
+
+    offer_line = ''
+    if offer.get('eligible'):
+        offer_line = (
+            f"<p><strong>Retention option:</strong> {html_tools.escape(str(offer.get('label')))} "
+            f"for ${float(offer.get('amount') or 0):.2f}.</p>"
+        )
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+      <h1 style="font-size: 22px; margin-bottom: 12px;">New support ticket</h1>
+      <p><strong>From:</strong> {user_email}</p>
+      <p><strong>Category:</strong> {html_tools.escape(category)}</p>
+      <p><strong>Subject:</strong> {html_tools.escape(subject_text)}</p>
+      {refund_line}
+      {offer_line}
+      <div style="border-left: 3px solid #cbd5e1; padding-left: 12px; margin: 16px 0;">
+        {html_tools.escape(message).replace(chr(10), '<br>')}
+      </div>
+      <p><a href="{admin_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Open admin dashboard</a></p>
+    </div>
+    """
+    text_body = (
+        f'New support ticket from {ticket.get("userEmail") or ticket.get("user_email") or "Unknown user"}\n'
+        f'Category: {category}\n'
+        f'Subject: {subject_text}\n\n'
+        f'{message}\n\n'
+        f'Open admin dashboard: {admin_url}\n'
+    )
+    return send_email(
+        to_email,
+        f'New support ticket: {subject_text[:90]}',
+        html_body,
+        text_body,
+        tags=[{'name': 'category', 'value': 'support_ticket'}],
+        idempotency_key=_idempotency_key('support_ticket', ticket_id, to_email),
+    )
+
+
+def send_refund_alert_admin_email(
+    to_email: str,
+    ticket: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, object]:
+    context = context or {}
+    refund = context.get('refundEligibility') or {}
+    offer = context.get('retentionOffer') or {}
+    user_email = html_tools.escape(str(ticket.get('userEmail') or ticket.get('user_email') or 'Unknown user'))
+    subject_text = str(ticket.get('subject') or 'Refund-related support request')
+    admin_url = f'{_frontend_url()}/dashboard'
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+      <h1 style="font-size: 22px; margin-bottom: 12px;">Refund-related ticket needs review</h1>
+      <p><strong>User:</strong> {user_email}</p>
+      <p><strong>Subject:</strong> {html_tools.escape(subject_text)}</p>
+      <p><strong>Eligibility signal:</strong> {html_tools.escape(str(refund.get('status') or 'review'))}</p>
+      <p>{html_tools.escape(str(refund.get('note') or 'Manual review recommended.'))}</p>
+      <p><strong>Usage:</strong> {html_tools.escape(str((context.get('usage') or {}).get('questionsCompleted', 0)))} questions, {html_tools.escape(str((context.get('usage') or {}).get('totalPdfDownloads', 0)))} PDF downloads.</p>
+      <p><strong>Retention:</strong> {html_tools.escape(str(offer.get('message') or 'No retention offer recommended.'))}</p>
+      <p><a href="{admin_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Review in admin dashboard</a></p>
+    </div>
+    """
+    text_body = (
+        f'Refund-related ticket from {ticket.get("userEmail") or ticket.get("user_email") or "Unknown user"}\n'
+        f'Subject: {subject_text}\n'
+        f'Eligibility: {refund.get("status") or "review"} - {refund.get("note") or "Manual review recommended."}\n'
+        f'Review: {admin_url}\n'
+    )
+    return send_email(
+        to_email,
+        f'Refund review needed: {subject_text[:90]}',
+        html_body,
+        text_body,
+        tags=[{'name': 'category', 'value': 'refund_alert'}],
+        idempotency_key=_idempotency_key('refund_alert', str(ticket.get('id') or ''), to_email),
+    )
+
+
+def send_support_reply_email(
+    to_email: str,
+    ticket: Dict[str, Any],
+    reply: str,
+) -> Dict[str, object]:
+    subject_text = str(ticket.get('subject') or 'Support ticket')
+    dashboard_url = f'{_frontend_url()}/dashboard'
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+      <h1 style="font-size: 22px; margin-bottom: 12px;">Support replied to your ticket</h1>
+      <p><strong>{html_tools.escape(subject_text)}</strong></p>
+      <div style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 16px 0;">
+        {html_tools.escape(reply).replace(chr(10), '<br>')}
+      </div>
+      <p><a href="{dashboard_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Open your dashboard</a></p>
+    </div>
+    """
+    text_body = (
+        f'Support replied to your ticket: {subject_text}\n\n'
+        f'{reply}\n\n'
+        f'Open your dashboard: {dashboard_url}\n'
+    )
+    return send_email(
+        to_email,
+        f'Support reply: {subject_text[:90]}',
+        html_body,
+        text_body,
+        tags=[{'name': 'category', 'value': 'support_reply'}],
+        idempotency_key=_idempotency_key('support_reply', str(ticket.get('id') or ''), reply[:120]),
     )

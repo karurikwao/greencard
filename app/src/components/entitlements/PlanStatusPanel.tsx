@@ -245,7 +245,7 @@ export function PlanStatusPanel({
           {isLifetime && (
             <p className="text-sm text-center text-amber-600 flex items-center justify-center gap-1">
               <Crown className="w-4 h-4" />
-              Lifetime member — all features unlocked
+              Lifetime member - all features unlocked
             </p>
           )}
         </div>

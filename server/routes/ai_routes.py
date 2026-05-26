@@ -3,8 +3,15 @@ import json
 import uuid
 import requests as http_requests
 from flask import Blueprint, request, jsonify
-from auth import optional_auth, require_auth
+from auth import optional_auth, require_auth, require_admin
 import db
+from support_service import (
+    get_user_support_context,
+    has_refund_signal,
+    json_dumps,
+    normalize_ticket_row,
+    parse_jsonish,
+)
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -53,14 +60,11 @@ def ai_interview_turn():
         messages = _build_interview_messages(data)
 
     try:
-        if provider == 'anthropic':
-            response_text = _call_anthropic(model, messages)
-        elif provider == 'deepseek':
-            response_text = _call_deepseek(model, messages)
-        elif provider == 'nvidia':
-            response_text = _call_nvidia(model, messages)
-        else:
-            response_text = _call_openai(model, messages)
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+            provider,
+            model,
+            messages,
+        )
     except Exception as e:
         return jsonify({
             'success': False,
@@ -73,10 +77,14 @@ def ai_interview_turn():
 
     _record_turn(user, session_id)
 
-    normalized = _normalize_ai_response(response_text, provider, model, data)
+    normalized = _normalize_ai_response(response_text, actual_provider, actual_model, data)
     normalized['sessionId'] = str(session_id or data.get('anonymousId') or uuid.uuid4())
     normalized['turnsRemaining'] = _turns_remaining(limits)
     normalized['planType'] = limits.get('plan_type') if isinstance(limits, dict) else ('trial' if not user else None)
+    normalized['requestedProvider'] = provider
+    normalized['requestedModel'] = model
+    normalized['providerFallback'] = fallback_used
+    normalized['providerErrors'] = provider_errors[-2:]
 
     return jsonify({
         'success': True,
@@ -106,29 +114,117 @@ def support_assist():
     messages = _build_support_messages(category, subject, message)
 
     try:
-        if provider == 'anthropic':
-            response_text = _call_anthropic(model, messages)
-        elif provider == 'deepseek':
-            response_text = _call_deepseek(model, messages)
-        elif provider == 'nvidia':
-            response_text = _call_nvidia(model, messages)
-        elif provider == 'openai':
-            response_text = _call_openai(model, messages)
-        else:
-            raise ValueError('No AI provider configured')
-        normalized = _normalize_support_response(response_text, provider, model, category)
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+            provider,
+            model,
+            messages,
+        )
+        normalized = _normalize_support_response(response_text, actual_provider, actual_model, category)
+        normalized['requestedProvider'] = provider
+        normalized['requestedModel'] = model
+        normalized['providerFallback'] = fallback_used
+        normalized['providerErrors'] = provider_errors[-2:]
     except Exception as e:
         normalized = _support_fallback_response(category, subject, message, str(e))
 
     return jsonify({'success': True, 'data': normalized})
 
 
+@ai_bp.route('/support-ticket-draft', methods=['POST'])
+@require_admin
+def support_ticket_draft():
+    data = request.get_json() or {}
+    ticket_id = data.get('ticketId') or data.get('ticket_id')
+    if not ticket_id:
+        return jsonify({'error': 'ticketId is required'}), 400
+
+    ticket = db.query_one(
+        """
+        SELECT t.*, u.email AS user_email
+        FROM support_tickets t
+        JOIN users u ON u.id = t.user_id
+        WHERE t.id = %s
+        """,
+        (ticket_id,),
+    )
+    if not ticket:
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    context = get_user_support_context(str(ticket['user_id']))
+    triage = parse_jsonish(ticket.get('ai_triage'), {})
+    refund_signal = has_refund_signal(
+        ticket.get('category') or 'other',
+        ticket.get('subject') or '',
+        ticket.get('message') or '',
+        triage,
+    )
+    provider = data.get('provider') or (
+        'nvidia' if NVIDIA_API_KEY else
+        'deepseek' if DEEPSEEK_API_KEY else
+        'anthropic' if ANTHROPIC_API_KEY else
+        'openai' if OPENAI_API_KEY else
+        'fallback'
+    )
+    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    messages = _build_admin_support_messages(ticket, context, refund_signal)
+
+    try:
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+            provider,
+            model,
+            messages,
+        )
+        normalized = _normalize_admin_support_response(response_text, actual_provider, actual_model)
+        normalized['requestedProvider'] = provider
+        normalized['requestedModel'] = model
+        normalized['providerFallback'] = fallback_used
+        normalized['providerErrors'] = provider_errors[-2:]
+    except Exception as e:
+        normalized = _admin_support_fallback_response(ticket, context, str(e))
+
+    merged_triage = {
+        **triage,
+        'refundSignal': refund_signal,
+        'adminDraft': {
+            'provider': normalized.get('provider'),
+            'model': normalized.get('model'),
+            'urgency': normalized.get('urgency'),
+            'refundEligibilityStatus': normalized.get('refundEligibilityStatus'),
+            'retentionOfferRecommended': normalized.get('retentionOfferRecommended'),
+        },
+    }
+    try:
+        db.execute(
+            """
+            UPDATE support_tickets
+            SET ai_summary = COALESCE(%s, ai_summary),
+                ai_suggested_reply = %s,
+                ai_triage = %s::jsonb,
+                last_ai_assisted_at = now(),
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (
+                normalized.get('summary'),
+                normalized.get('reply'),
+                json_dumps(merged_triage),
+                ticket_id,
+            ),
+        )
+    except Exception:
+        pass
+
+    ticket['ai_triage'] = merged_triage
+    normalized['ticket'] = normalize_ticket_row(ticket, context)
+    return jsonify({'success': True, 'data': normalized})
+
+
 def _default_model_for_provider(provider):
     return {
-        'openai': 'gpt-5-mini',
-        'anthropic': 'claude-sonnet-4-5-20251022',
-        'deepseek': 'deepseek-chat',
-        'nvidia': 'meta/llama-3.1-8b-instruct',
+        'openai': os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-5-mini'),
+        'anthropic': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-haiku-20240307'),
+        'deepseek': os.getenv('DEEPSEEK_DEFAULT_MODEL', 'deepseek-chat'),
+        'nvidia': os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct'),
     }.get(provider, 'gpt-5-mini')
 
 
@@ -224,6 +320,160 @@ def _support_fallback_response(category, subject, message, error_message):
         'fallback': True,
         'error': error_message[:240],
     }
+
+
+def _build_admin_support_messages(ticket, context, refund_signal):
+    refund = context.get('refundEligibility') or {}
+    offer = context.get('retentionOffer') or {}
+    usage = context.get('usage') or {}
+    subscription = context.get('subscription') or {}
+    system_prompt = (
+        "You are InterviewReady's admin support copilot. Draft factual, concise replies for a human "
+        "admin to review before sending. Do not promise a refund, do not admit fault, and do not give "
+        "legal advice. For unauthorized transaction claims, prioritize calm manual review. If a retention "
+        "offer is eligible, mention it as an optional lower-cost alternative without pressure. Return only "
+        "valid JSON with keys: reply, summary, urgency, refundEligibilityStatus, "
+        "retentionOfferRecommended, notifyAdmin, internalNotes."
+    )
+    user_prompt = f"""
+Ticket:
+- User: {ticket.get('user_email')}
+- Category: {ticket.get('category')}
+- Subject: {ticket.get('subject')}
+- Message: {ticket.get('message')}
+- Existing AI summary: {ticket.get('ai_summary') or '(none)'}
+
+Account context:
+- Plan: {subscription.get('planLabel')} ({subscription.get('planType')}, {subscription.get('status')})
+- Refund signal: {refund_signal}
+- Refund eligibility signal: {refund.get('status')} - {refund.get('note')}
+- Days since purchase: {refund.get('daysSincePurchase')}
+- Usage: {usage.get('questionsCompleted', 0)} questions, {usage.get('mockInterviewsCompleted', 0)} mock interviews, {usage.get('totalPdfDownloads', 0)} PDF downloads
+- Download review: {usage.get('downloadReviewFlag')} - {usage.get('downloadReviewNote')}
+- Retention offer: {offer.get('eligible')} - {offer.get('label')} at ${offer.get('amount')}
+
+Write a reply the admin can send after review. Keep it specific to this ticket.
+"""
+    return [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': user_prompt},
+    ]
+
+
+def _normalize_admin_support_response(response_text, provider, model):
+    try:
+        cleaned = response_text.strip()
+        if cleaned.startswith('```'):
+            cleaned = cleaned.strip('`')
+            cleaned = cleaned.replace('json\n', '', 1).replace('json\r\n', '', 1)
+        parsed = json.loads(cleaned)
+    except Exception:
+        parsed = {}
+
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    reply = parsed.get('reply') or response_text.strip()
+    summary = parsed.get('summary') or reply[:240]
+    urgency = parsed.get('urgency') or 'normal'
+    if urgency not in {'low', 'normal', 'high'}:
+        urgency = 'normal'
+
+    return {
+        'reply': reply[:2200],
+        'summary': summary[:600],
+        'urgency': urgency,
+        'refundEligibilityStatus': parsed.get('refundEligibilityStatus') or 'review',
+        'retentionOfferRecommended': bool(parsed.get('retentionOfferRecommended', False)),
+        'notifyAdmin': bool(parsed.get('notifyAdmin', urgency == 'high')),
+        'internalNotes': (parsed.get('internalNotes') or '')[:900],
+        'provider': provider,
+        'model': model,
+        'fallback': False,
+    }
+
+
+def _admin_support_fallback_response(ticket, context, error_message):
+    refund = context.get('refundEligibility') or {}
+    offer = context.get('retentionOffer') or {}
+    reply = (
+        "Thanks for reaching out. I reviewed your message and we can help with this from support. "
+        "If this is about a refund or an unauthorized charge, we will review the Stripe payment record, "
+        "the account usage history, and the refund policy before making a decision."
+    )
+    if offer.get('eligible'):
+        reply += (
+            f" If your goal is to reduce cost rather than fully leave, we may also be able to offer "
+            f"the {offer.get('label')} at ${float(offer.get('amount') or 0):.2f}."
+        )
+    return {
+        'reply': reply,
+        'summary': f"{ticket.get('subject')}: {(ticket.get('message') or '')[:220]}",
+        'urgency': 'high' if ticket.get('category') == 'refund' else 'normal',
+        'refundEligibilityStatus': refund.get('status') or 'review',
+        'retentionOfferRecommended': bool(offer.get('eligible')),
+        'notifyAdmin': ticket.get('category') == 'refund',
+        'internalNotes': f'Fallback response used because AI provider failed: {error_message[:240]}',
+        'provider': 'fallback',
+        'model': None,
+        'fallback': True,
+    }
+
+
+def _provider_configured(provider):
+    return {
+        'openai': bool(OPENAI_API_KEY),
+        'anthropic': bool(ANTHROPIC_API_KEY),
+        'deepseek': bool(DEEPSEEK_API_KEY),
+        'nvidia': bool(NVIDIA_API_KEY),
+    }.get(provider, False)
+
+
+def _provider_priority(preferred_provider):
+    configured_order = [
+        item.strip()
+        for item in os.getenv('AI_FALLBACK_PROVIDERS', 'nvidia,deepseek,anthropic,openai').split(',')
+        if item.strip()
+    ]
+    ordered = []
+    if preferred_provider and preferred_provider != 'fallback':
+        ordered.append(preferred_provider)
+    for provider in configured_order:
+        if provider not in ordered:
+            ordered.append(provider)
+    return ordered
+
+
+def _call_provider(provider, model, messages):
+    if provider == 'anthropic':
+        return _call_anthropic(model, messages)
+    if provider == 'deepseek':
+        return _call_deepseek(model, messages)
+    if provider == 'nvidia':
+        return _call_nvidia(model, messages)
+    if provider == 'openai':
+        return _call_openai(model, messages)
+    raise ValueError(f'Unsupported AI provider: {provider}')
+
+
+def _call_provider_with_fallback(preferred_provider, preferred_model, messages):
+    errors = []
+    for provider in _provider_priority(preferred_provider):
+        if not _provider_configured(provider):
+            errors.append({
+                'provider': provider,
+                'message': 'API key is not configured',
+            })
+            continue
+        model = preferred_model if provider == preferred_provider else _default_model_for_provider(provider)
+        try:
+            return _call_provider(provider, model, messages), provider, model, provider != preferred_provider, errors
+        except Exception as exc:
+            errors.append({
+                'provider': provider,
+                'message': str(exc)[:240],
+            })
+    raise ValueError('No configured AI provider was able to complete the request')
 
 
 def _check_usage_limits(user):

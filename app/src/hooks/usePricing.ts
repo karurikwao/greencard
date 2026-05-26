@@ -30,6 +30,7 @@ import {
   hasPremiumAccess,
   startCheckout,
   openManageSubscription,
+  createRetentionCheckoutSession,
   cancelSubscription,
   resumeSubscription
 } from '@/lib/subscriptions';
@@ -407,6 +408,17 @@ export function usePricing() {
     });
   }, []);
 
+  const startRetentionOffer = useCallback(async () => {
+    const result = await createRetentionCheckoutSession(
+      `${window.location.origin}/dashboard?checkout=success&plan=interviewPass&retention=accepted`,
+      `${window.location.origin}/dashboard?retention=canceled`
+    );
+    if (result.success && result.checkoutUrl) {
+      window.location.href = result.checkoutUrl;
+    }
+    return result;
+  }, []);
+
   const cancelPlanRenewal = useCallback(async () => {
     const result = await cancelSubscription();
     if (result.success) {
@@ -509,6 +521,7 @@ export function usePricing() {
     upgradePlan,
     startPlanCheckout,
     upgradeToLifetime,
+    startRetentionOffer,
     cancelPlanRenewal,
     resumePlanRenewal,
     manageSubscription,

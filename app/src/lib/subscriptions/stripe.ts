@@ -24,6 +24,14 @@ export interface CheckoutSessionResult {
     discountAmount: number;
     finalPrice: number;
   };
+  offer?: {
+    eligible: boolean;
+    label: string;
+    amountCents: number;
+    amount: number;
+    currency: string;
+    message: string;
+  };
 }
 
 export interface PortalSessionResult {
@@ -137,6 +145,59 @@ export async function redirectToCheckout(
     return true;
   }
 
+  return false;
+}
+
+export async function createRetentionCheckoutSession(
+  successUrl?: string,
+  cancelUrl?: string
+): Promise<CheckoutSessionResult> {
+  try {
+    const { data, error } = await apiClient.invokeFunction<CheckoutSessionResult>(
+      'create-retention-checkout-session',
+      { successUrl, cancelUrl }
+    );
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message || 'Failed to start retention checkout',
+        code: error.code,
+      };
+    }
+
+    if (!data?.checkoutUrl) {
+      return {
+        success: false,
+        error: 'No checkout URL returned',
+        code: 'NO_URL',
+      };
+    }
+
+    return {
+      success: true,
+      checkoutUrl: data.checkoutUrl,
+      sessionId: data.sessionId,
+      offer: data.offer,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'An unexpected error occurred',
+      code: 'UNKNOWN_ERROR',
+    };
+  }
+}
+
+export async function redirectToRetentionOffer(
+  successUrl?: string,
+  cancelUrl?: string
+): Promise<boolean> {
+  const result = await createRetentionCheckoutSession(successUrl, cancelUrl);
+  if (result.success && result.checkoutUrl) {
+    window.location.href = result.checkoutUrl;
+    return true;
+  }
   return false;
 }
 

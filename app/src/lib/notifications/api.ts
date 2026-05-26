@@ -2,7 +2,7 @@
 * Notifications, Broadcasts, and Support Tickets API
 */
 
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getToken } from '@/lib/apiClient';
 import type {
 UserNotification,
 BroadcastMessage,
@@ -12,7 +12,31 @@ AdminSupportTicket,
 CreateTicketInput,
 SupportAiAssistInput,
 SupportAiAssistResponse,
+AdminSupportDraftResponse,
 } from './types';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+async function postJson<T>(path: string, body: Record<string, unknown>): Promise<{ data: T | null; error: string | null }> {
+const token = getToken();
+const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+if (token) headers.Authorization = `Bearer ${token}`;
+
+try {
+const response = await fetch(`${API_URL}${path}`, {
+method: 'POST',
+headers,
+body: JSON.stringify(body),
+});
+const payload = await response.json().catch(() => ({}));
+if (!response.ok) {
+return { data: null, error: payload.error || response.statusText || 'Request failed' };
+}
+return { data: payload as T, error: null };
+} catch (err) {
+return { data: null, error: err instanceof Error ? err.message : 'Network error' };
+}
+}
 
 // ============================================================================
 // Notifications API
@@ -255,7 +279,7 @@ error: err instanceof Error ? err.message : 'Unknown error',
 // Support Tickets API
 // ============================================================================
 
-function normalizeTicket(row: Record<string, unknown>): SupportTicket {
+function normalizeTicket(row: Record<string, unknown>): SupportTicket & Partial<AdminSupportTicket> {
 return {
 id: String(row.id || ''),
 userId: String(row.userId || row.user_id || ''),
@@ -272,6 +296,13 @@ repliedAt: (row.repliedAt || row.replied_at || undefined) as string | undefined,
 closedAt: (row.closedAt || row.closed_at || undefined) as string | undefined,
 createdAt: String(row.createdAt || row.created_at || new Date().toISOString()),
 updatedAt: String(row.updatedAt || row.updated_at || row.createdAt || row.created_at || new Date().toISOString()),
+...(row.userEmail || row.user_email ? { userEmail: String(row.userEmail || row.user_email) } : {}),
+...(row.refundSignal !== undefined || row.refund_signal !== undefined ? { refundSignal: Boolean(row.refundSignal ?? row.refund_signal) } : {}),
+...(row.cancelSignal !== undefined || row.cancel_signal !== undefined ? { cancelSignal: Boolean(row.cancelSignal ?? row.cancel_signal) } : {}),
+...(row.refundEligibility || row.refund_eligibility ? { refundEligibility: (row.refundEligibility || row.refund_eligibility) as AdminSupportTicket['refundEligibility'] } : {}),
+...(row.retentionOffer || row.retention_offer ? { retentionOffer: (row.retentionOffer || row.retention_offer) as AdminSupportTicket['retentionOffer'] } : {}),
+...(row.subscription ? { subscription: row.subscription as AdminSupportTicket['subscription'] } : {}),
+...(row.usage ? { usage: row.usage as AdminSupportTicket['usage'] } : {}),
 };
 }
 
@@ -287,8 +318,7 @@ if (!user) {
 return { success: false, error: 'Not authenticated' };
 }
 
-const { data, error } = await apiClient.rpc('create_support_ticket', {
-userId: user.id,
+const { data, error } = await apiClient.invokeFunction<{ success: boolean; ticket?: Record<string, unknown> }>('create-support-ticket', {
 subject: input.subject,
 category: input.category,
 message: input.message,
@@ -302,18 +332,11 @@ console.error('Error creating ticket:', error);
 return { success: false, error: error.message };
 }
 
-// Fetch the created ticket
-const { data: ticketData, error: fetchError } = await apiClient
-.from('support_tickets')
-.select('*')
-.eq('id', data)
-.single();
-
-if (fetchError) {
-return { success: false, error: fetchError.message };
+if (!data?.success || !data.ticket) {
+return { success: false, error: 'Ticket was submitted but could not be loaded.' };
 }
 
-return { success: true, data: normalizeTicket(ticketData as Record<string, unknown>) };
+return { success: true, data: normalizeTicket(data.ticket) };
 } catch (err) {
 console.error('Error creating ticket:', err);
 return {
@@ -385,16 +408,43 @@ data?: AdminSupportTicket[];
 error?: string;
 }> {
 try {
-const { data, error } = await apiClient.rpc('get_open_tickets_for_admin', {});
+const { data, error } = await apiClient.invokeFunction<{ tickets?: Record<string, unknown>[] }>('admin-support-tickets', {
+status: 'active',
+limit: 150,
+});
 
 if (error) {
 console.error('Error fetching admin tickets:', error);
 return { success: false, error: error.message };
 }
 
-return { success: true, data: data as AdminSupportTicket[] };
+return { success: true, data: ((data?.tickets || []) as Record<string, unknown>[]).map(normalizeTicket) as AdminSupportTicket[] };
 } catch (err) {
 console.error('Error fetching admin tickets:', err);
+return {
+success: false,
+error: err instanceof Error ? err.message : 'Unknown error',
+};
+}
+}
+
+/**
+* Ask the admin support copilot to draft a reply for a live ticket.
+*/
+export async function draftSupportTicketReply(
+ticketId: string
+): Promise<{ success: boolean; data?: AdminSupportDraftResponse; error?: string }> {
+try {
+const { data, error } = await apiClient.invokeFunction<AdminSupportDraftResponse>('admin-support-ticket-draft', {
+ticketId,
+});
+
+if (error) {
+return { success: false, error: error.message };
+}
+
+return { success: true, data: data as AdminSupportDraftResponse };
+} catch (err) {
 return {
 success: false,
 error: err instanceof Error ? err.message : 'Unknown error',
@@ -415,15 +465,14 @@ if (!user) {
 return { success: false, error: 'Not authenticated' };
 }
 
-const { error } = await apiClient.rpc('reply_to_support_ticket', {
-ticketId,
-adminUserId: user.id,
-reply,
-});
+const { error } = await postJson<{ success: boolean; ticket?: Record<string, unknown> }>(
+`/api/admin/support/tickets/${ticketId}/reply`,
+{ reply }
+);
 
 if (error) {
 console.error('Error replying to ticket:', error);
-return { success: false, error: error.message };
+return { success: false, error };
 }
 
 return { success: true };
@@ -443,18 +492,14 @@ export async function closeTicket(
 ticketId: string
 ): Promise<{ success: boolean; error?: string }> {
 try {
-const { error } = await apiClient
-.from('support_tickets')
-.update({
-status: 'closed',
-closed_at: new Date().toISOString(),
-updated_at: new Date().toISOString(),
-})
-.eq('id', ticketId);
+const { error } = await postJson<{ success: boolean; ticket?: Record<string, unknown> }>(
+`/api/admin/support/tickets/${ticketId}/close`,
+{}
+);
 
 if (error) {
 console.error('Error closing ticket:', error);
-return { success: false, error: error.message };
+return { success: false, error };
 }
 
 return { success: true };
