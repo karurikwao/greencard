@@ -4,13 +4,14 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, List, CheckCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, List, CheckCircle, X, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { useOptionalAuth } from '@/lib/auth/AuthContext';
+import { AuthModal } from '@/components/auth/AuthModal';
 import { 
   usePractice, 
   getRelatedQuestions, 
@@ -28,12 +29,14 @@ interface TopicPracticePageProps {
   topic: PracticeTopic;
   allTopics: PracticeTopic[];
   onBack: () => void;
+  onSelectQuestion?: (topicId: string, questionIndex: number) => void;
 }
 
 export function TopicPracticePage({
   topic,
   allTopics,
   onBack,
+  onSelectQuestion,
 }: TopicPracticePageProps) {
   const {
     getCurrentIndex,
@@ -43,9 +46,13 @@ export function TopicPracticePage({
     isSavedForLater,
     toggleSaveForLater,
   } = usePractice();
+  const { isAuthenticated } = useOptionalAuth();
 
   // Get persisted index or start at 0
   const [currentIndex, setLocalIndex] = useState(() => getCurrentIndex(topic.id));
+  const [isQuestionListOpen, setIsQuestionListOpen] = useState(false);
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   
   // Sync with persistence when index changes
   useEffect(() => {
@@ -89,6 +96,7 @@ export function TopicPracticePage({
   const goToQuestion = useCallback((index: number) => {
     if (index >= 0 && index < totalQuestions) {
       setLocalIndex(index);
+      setIsQuestionListOpen(false);
     }
   }, [totalQuestions]);
 
@@ -99,25 +107,31 @@ export function TopicPracticePage({
     // If it's in the same topic, just jump to that index
     if (targetQuestion.topicId === topic.id) {
       goToQuestion(targetQuestion.sortOrder);
+    } else if (onSelectQuestion) {
+      onSelectQuestion(targetQuestion.topicId, targetQuestion.sortOrder);
     } else {
-      // For cross-topic navigation, show a message for now
-      // In Phase 2, this would navigate to the other topic
-      alert(`This question is from "${result.topicTitle}". Cross-topic navigation coming in a future update.`);
+      setIsQuestionListOpen(false);
     }
-  }, [topic.id, goToQuestion]);
+  }, [topic.id, goToQuestion, onSelectQuestion]);
 
   // Comfort action handlers
   const handleComfortChange = useCallback((status: ComfortStatus) => {
     if (currentQuestion) {
       setComfortStatus(currentQuestion.id, status);
+      if (!isAuthenticated) {
+        setShowSignupPrompt(true);
+      }
     }
-  }, [currentQuestion, setComfortStatus]);
+  }, [currentQuestion, isAuthenticated, setComfortStatus]);
 
   const handleSaveToggle = useCallback(() => {
     if (currentQuestion) {
       toggleSaveForLater(currentQuestion.id);
+      if (!isAuthenticated) {
+        setShowSignupPrompt(true);
+      }
     }
-  }, [currentQuestion, toggleSaveForLater]);
+  }, [currentQuestion, isAuthenticated, toggleSaveForLater]);
 
   if (!currentQuestion) {
     return (
@@ -152,18 +166,46 @@ export function TopicPracticePage({
         <div className="space-y-6">
           {/* Question Navigation */}
           <div className="flex items-center justify-between">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="border-slate-300 text-slate-700 font-medium">
-                  <List className="w-4 h-4 mr-2" />
-                  All questions
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80 sm:w-96">
-                <SheetHeader>
-                <SheetTitle className="text-slate-950 font-semibold">Questions in this topic</SheetTitle>
-                </SheetHeader>
-                <div className="mt-6 space-y-1 max-h-[calc(100vh-8rem)] overflow-y-auto pr-2">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={isQuestionListOpen}
+              onClick={() => setIsQuestionListOpen(prev => !prev)}
+              className="border-slate-300 text-slate-700 font-medium"
+            >
+              <List className="w-4 h-4 mr-2" />
+              All questions
+            </Button>
+
+            {/* Quick Stats */}
+            <div className="text-sm font-medium text-slate-700">
+              <span className="text-slate-700">{currentIndex + 1}</span>
+              <span className="text-slate-500 mx-1.5">/</span>
+              <span className="text-slate-600">{totalQuestions}</span>
+            </div>
+          </div>
+
+          {isQuestionListOpen && (
+            <Card className="border-slate-300 shadow-sm">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-semibold text-slate-950">Questions in this topic</h3>
+                    <p className="text-xs font-medium text-slate-600 mt-1">
+                      Jump to any question without leaving this page.
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsQuestionListOpen(false)}
+                    aria-label="Close question list"
+                    className="h-8 w-8 p-0 text-slate-500 hover:text-slate-900"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-[min(60vh,28rem)] overflow-y-auto pr-1">
                   {topic.questions.map((q, idx) => {
                     const comfort = getComfortStatus(q.id);
                     const isCurrent = idx === currentIndex;
@@ -175,23 +217,23 @@ export function TopicPracticePage({
                         className={cn(
                           'w-full text-left p-3 rounded-md border transition-all text-sm',
                           isCurrent 
-                            ? 'bg-slate-50 border-slate-300' 
-                            : 'bg-white border-slate-100 hover:border-slate-200',
-                          comfort === 'understood' && !isCurrent && 'border-l-2 border-l-emerald-300',
-                          comfort === 'needs-practice' && !isCurrent && 'border-l-2 border-l-amber-300',
-                          comfort === 'nervous' && !isCurrent && 'border-l-2 border-l-rose-300',
+                            ? 'bg-slate-100 border-slate-400' 
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+                          comfort === 'understood' && !isCurrent && 'border-l-4 border-l-emerald-300',
+                          comfort === 'needs-practice' && !isCurrent && 'border-l-4 border-l-amber-300',
+                          comfort === 'nervous' && !isCurrent && 'border-l-4 border-l-rose-300',
                         )}
                       >
                         <div className="flex items-start gap-3">
                           <span className={cn(
-                            'text-xs w-5',
-                            isCurrent ? 'text-slate-800 font-semibold' : 'text-slate-600 font-medium'
+                            'text-xs w-5 pt-0.5',
+                            isCurrent ? 'text-slate-900 font-bold' : 'text-slate-600 font-semibold'
                           )}>
                             {idx + 1}
                           </span>
                           <span className={cn(
-                            'line-clamp-2 leading-relaxed',
-                            isCurrent ? 'text-slate-950 font-medium' : 'text-slate-700'
+                            'leading-relaxed',
+                            isCurrent ? 'text-slate-950 font-semibold' : 'text-slate-800 font-medium'
                           )}>
                             {q.prompt}
                           </span>
@@ -200,16 +242,9 @@ export function TopicPracticePage({
                     );
                   })}
                 </div>
-              </SheetContent>
-            </Sheet>
-
-            {/* Quick Stats */}
-            <div className="text-sm font-medium text-slate-700">
-              <span className="text-slate-700">{currentIndex + 1}</span>
-              <span className="text-slate-500 mx-1.5">/</span>
-              <span className="text-slate-600">{totalQuestions}</span>
-            </div>
-          </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Question Card */}
           <QuestionCard
@@ -227,6 +262,38 @@ export function TopicPracticePage({
                 onComfortChange={handleComfortChange}
                 onSaveToggle={handleSaveToggle}
               />
+              {showSignupPrompt && !isAuthenticated && (
+                <div className="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-950">
+                        Progress saved on this device
+                      </p>
+                      <p className="mt-1 text-sm text-blue-900">
+                        Create a free account when you are ready, and the app can remember your answers across devices.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => setShowAuthModal(true)}
+                        className="bg-blue-700 hover:bg-blue-800 text-white"
+                      >
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Free account
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowSignupPrompt(false)}
+                        className="text-blue-900 hover:bg-blue-100"
+                      >
+                        Not now
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -295,6 +362,11 @@ export function TopicPracticePage({
           </div>
         </div>
       </main>
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+      />
     </div>
   );
 }

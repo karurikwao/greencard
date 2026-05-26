@@ -48,6 +48,7 @@ import {
   Quote,
   Plus,
   Trash2,
+  Pencil,
   Printer,
   Eye,
   EyeOff,
@@ -62,9 +63,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
@@ -1017,21 +1019,40 @@ function TopicsSection({
   );
 }
 
-function TimelineBuilderSection() {
-  const [milestones, setMilestones] = useLocalStorage('interview-timeline-v2', defaultMilestones.map((m, i) => ({ ...m, id: `m-${i}` })));
-  const [showPreview, setShowPreview] = useState(false);
+type TimelineMilestone = (typeof defaultMilestones)[number] & { id: string };
 
-  const updateMilestone = (id: string, field: keyof typeof defaultMilestones[0], value: string | boolean) => {
+function TimelineBuilderSection() {
+  const [milestones, setMilestones] = useLocalStorage<TimelineMilestone[]>(
+    'interview-timeline-v2',
+    defaultMilestones.map((m, i) => ({ ...m, id: `m-${i}` }))
+  );
+  const [showPreview, setShowPreview] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState<TimelineMilestone | null>(null);
+
+  const updateMilestone = (id: string, field: keyof Omit<TimelineMilestone, 'id'>, value: string | boolean) => {
     setMilestones(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+  };
+
+  const updateEditingMilestone = (field: keyof Omit<TimelineMilestone, 'id'>, value: string | boolean) => {
+    setEditingMilestone(prev => prev ? { ...prev, [field]: value } : prev);
   };
 
   const addMilestone = () => {
     const newId = `m-${Date.now()}`;
-    setMilestones(prev => [...prev, { id: newId, title: 'New Milestone', date: '', location: '', notes: '', hasEvidence: false }]);
+    const newMilestone = { id: newId, title: 'New Milestone', date: '', location: '', notes: '', hasEvidence: false };
+    setMilestones(prev => [...prev, newMilestone]);
+    setEditingMilestone(newMilestone);
   };
 
   const removeMilestone = (id: string) => {
     setMilestones(prev => prev.filter(m => m.id !== id));
+    setEditingMilestone(prev => prev?.id === id ? null : prev);
+  };
+
+  const saveEditingMilestone = () => {
+    if (!editingMilestone) return;
+    setMilestones(prev => prev.map(m => m.id === editingMilestone.id ? editingMilestone : m));
+    setEditingMilestone(null);
   };
 
   const filledCount = milestones.filter(m => m.date && m.location).length;
@@ -1099,12 +1120,16 @@ function TimelineBuilderSection() {
                     </div>
                     <div className="sm:col-span-3">
                       <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Notes</Label>
-                      <Input 
-                        value={milestone.notes} 
-                        onChange={(e) => updateMilestone(milestone.id, 'notes', e.target.value)} 
-                        className="mt-1 font-semibold text-slate-900 border-2 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" 
-                        placeholder="Details..." 
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditingMilestone({ ...milestone })}
+                        className="mt-1 flex min-h-10 w-full items-center justify-between gap-3 rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-left font-semibold text-slate-900 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      >
+                        <span className={milestone.notes ? 'line-clamp-1' : 'text-slate-500'}>
+                          {milestone.notes || 'Open full notes editor'}
+                        </span>
+                        <Pencil className="h-4 w-4 shrink-0 text-slate-500" />
+                      </button>
                     </div>
                     <div className="sm:col-span-1 flex items-end justify-end gap-2">
                       <Checkbox 
@@ -1149,6 +1174,92 @@ function TimelineBuilderSection() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={!!editingMilestone} onOpenChange={(open) => !open && setEditingMilestone(null)}>
+          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Edit timeline milestone</DialogTitle>
+              <DialogDescription>
+                Use the larger notes box to capture details clearly, then save to return to your timeline.
+              </DialogDescription>
+            </DialogHeader>
+
+            {editingMilestone && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="timeline-title" className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                      Milestone
+                    </Label>
+                    <Input
+                      id="timeline-title"
+                      value={editingMilestone.title}
+                      onChange={(e) => updateEditingMilestone('title', e.target.value)}
+                      className="mt-1 border-2 border-slate-300 font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="timeline-date" className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                      Date
+                    </Label>
+                    <Input
+                      id="timeline-date"
+                      type="date"
+                      value={editingMilestone.date}
+                      onChange={(e) => updateEditingMilestone('date', e.target.value)}
+                      className="mt-1 border-2 border-slate-300 font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="timeline-location" className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                      Location
+                    </Label>
+                    <Input
+                      id="timeline-location"
+                      value={editingMilestone.location}
+                      onChange={(e) => updateEditingMilestone('location', e.target.value)}
+                      placeholder="City, venue, or address"
+                      className="mt-1 border-2 border-slate-300 font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="timeline-notes" className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                      Notes
+                    </Label>
+                    <Textarea
+                      id="timeline-notes"
+                      value={editingMilestone.notes}
+                      onChange={(e) => updateEditingMilestone('notes', e.target.value)}
+                      placeholder="Write the details you and your spouse should remember..."
+                      className="mt-1 min-h-40 resize-y border-2 border-slate-300 font-medium leading-relaxed text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-800">
+                  <Checkbox
+                    checked={editingMilestone.hasEvidence}
+                    onCheckedChange={(checked: boolean) => updateEditingMilestone('hasEvidence', checked)}
+                    className="border-2 border-slate-500 data-[state=checked]:border-emerald-600 data-[state=checked]:bg-emerald-600"
+                  />
+                  I have photos, messages, receipts, or other evidence for this milestone
+                </label>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingMilestone(null)}>
+                Cancel
+              </Button>
+              <Button onClick={saveEditingMilestone} className="bg-slate-800 hover:bg-slate-900 text-white">
+                Save milestone
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </section>
   );
@@ -1513,6 +1624,7 @@ function HomePage({
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
+  const { setCurrentIndex } = usePractice();
 
   useEffect(() => {
     setViewMode(initialViewMode);
@@ -1571,6 +1683,13 @@ function HomePage({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleViewTimeline = () => {
+    setViewMode('home');
+    setTimeout(() => {
+      document.getElementById('timeline')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
   // Note: handleViewDashboard and handleViewReadiness are integrated into the Dashboard component directly
 
   // Handle returning to home
@@ -1581,9 +1700,10 @@ function HomePage({
   };
 
   // Handle practicing a specific question from saved/progress
-  const handlePracticeQuestion = (topicId: string, _questionIndex: number) => {
+  const handlePracticeQuestion = (topicId: string, questionIndex: number) => {
     const targetTopic = normalizedTopics.find(t => t.id === topicId);
     if (targetTopic) {
+      setCurrentIndex(topicId, questionIndex);
       setActivePracticeTopic(targetTopic);
       setViewMode('practice');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1637,9 +1757,11 @@ function HomePage({
     return (
       <>
         <TopicPracticePage
+          key={activePracticeTopic.id}
           topic={activePracticeTopic}
           allTopics={normalizedTopics}
           onBack={handleReturnHome}
+          onSelectQuestion={handlePracticeQuestion}
         />
         {adminOverlays}
       </>
@@ -1655,7 +1777,7 @@ function HomePage({
           onStartMockInterview={() => setViewMode('mock-interview')}
           onViewSaved={() => setViewMode('saved')}
           onViewProgress={() => setViewMode('progress')}
-          onViewTimeline={() => { /* scroll to timeline */ }}
+          onViewTimeline={handleViewTimeline}
           onViewCouplePractice={handleViewPartnerSync}
           onUpgrade={() => navigate('pricing')}
           onViewAdmin={() => setShowAdmin(true)}

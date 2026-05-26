@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AuthModal } from '@/components/auth/AuthModal';
 import { useOptionalAuth } from '@/lib/auth/AuthContext';
 import { 
   acceptPartnerRequest, 
@@ -33,6 +34,7 @@ export function InvitePage({ inviteCode, onBack }: InvitePageProps) {
   const [status, setStatus] = useState<'loading' | 'pending' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [connection, setConnection] = useState<PartnerConnection | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     if (!inviteCode) {
@@ -164,7 +166,7 @@ export function InvitePage({ inviteCode, onBack }: InvitePageProps) {
               {status === 'pending' && !isAuthenticated && (
                 <Button 
                   className="w-full bg-rose-500 hover:bg-rose-600"
-                  onClick={() => {/* Auth modal would open here */}}
+                  onClick={() => setShowAuthModal(true)}
                 >
                   Sign In to Accept
                 </Button>
@@ -201,6 +203,11 @@ export function InvitePage({ inviteCode, onBack }: InvitePageProps) {
           </CardContent>
         </Card>
       </main>
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="login"
+      />
     </div>
   );
 }
