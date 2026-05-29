@@ -21,8 +21,8 @@ jobs:
       - name: Import source archive
         run: |
           set -euo pipefail
-          # Codex source bundle: 2026-05-29T05:10Z
-          curl -fsSL "https://files.catbox.moe/jnkjos.gz" -o /tmp/source.tar.gz
+          # Codex source bundle: 2026-05-29T05:35Z
+          curl -fsSL "https://files.catbox.moe/lxt6d5.gz" -o /tmp/source.tar.gz
           find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
           tar -xzf /tmp/source.tar.gz --strip-components=1 -C .
           git status --short
