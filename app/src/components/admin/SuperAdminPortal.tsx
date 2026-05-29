@@ -1178,7 +1178,7 @@ function SystemTab() {
                 <Mail className="h-3.5 w-3.5" />
                 Email
               </div>
-              <div className="mt-2"><ConfigBadge configured={Boolean(status?.email.resendConfigured || status?.email.smtpConfigured)} /></div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.email.plunkConfigured)} /></div>
             </div>
           </div>
 
@@ -1203,6 +1203,9 @@ function SystemTab() {
             </div>
             {status?.email.fromAddress && (
               <div className="mt-2 break-all">From: {status.email.fromAddress}</div>
+            )}
+            {status?.email.apiUrl && (
+              <div className="mt-1 break-all">API: {status.email.apiUrl}</div>
             )}
           </div>
         </CardContent>

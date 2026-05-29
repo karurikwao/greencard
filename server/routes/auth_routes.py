@@ -1,9 +1,6 @@
 import os
 import uuid
-import smtplib
 from urllib.parse import urlencode
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from flask import Blueprint, request, jsonify
 from auth import (
     hash_password, verify_password, create_token, create_refresh_token,
@@ -16,46 +13,16 @@ auth_bp = Blueprint('auth', __name__)
 
 
 def send_password_reset_email(email: str, reset_token: str, redirect_to: str | None = None):
-    smtp_host = os.getenv('SMTP_HOST')
-    smtp_port = int(os.getenv('SMTP_PORT', '587'))
-    smtp_user = os.getenv('SMTP_USER')
-    smtp_password = os.getenv('SMTP_PASSWORD')
-    email_from = os.getenv('EMAIL_FROM', 'noreply@greencardprep.com')
     frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
     reset_base = (redirect_to or f"{frontend_url}/reset-password").split('?', 1)[0].rstrip('/')
     reset_url = f"{reset_base}?{urlencode({'token': reset_token})}"
 
-    if os.getenv('RESEND_API_KEY'):
-        return send_password_reset_message(email, reset_url).get('success', False)
-
-    if not smtp_host or not smtp_user:
+    result = send_password_reset_message(email, reset_url)
+    if result.get('skipped'):
         print(f"[DEV] Password reset for {email}: {reset_url}")
-        return True
 
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = 'Reset Your Password - GreenCardPrep'
-    msg['From'] = email_from
-    msg['To'] = email
-
-    text = f"Click the link to reset your password: {reset_url}\nThis link expires in 1 hour."
-    html = f"""<html><body><h2>Reset Your Password</h2>
-    <p>Click the link below to reset your password:</p>
-    <a href="{reset_url}">Reset Password</a>
-    <p>This link expires in 1 hour.</p></body></html>"""
-
-    msg.attach(MIMEText(text, 'plain'))
-    msg.attach(MIMEText(html, 'html'))
-
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(email_from, email, msg.as_string())
-        return True
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        return False
+    return result.get('success', False)
 
 
 @auth_bp.route('/signup', methods=['POST'])

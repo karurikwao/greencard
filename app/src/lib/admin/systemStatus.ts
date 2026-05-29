@@ -45,11 +45,11 @@ export interface AdminSystemStatus {
     urlConfigured: boolean;
   };
   email: {
-    provider: 'resend' | 'smtp' | 'dev';
-    resendConfigured: boolean;
-    smtpConfigured: boolean;
+    provider: 'plunk' | 'dev';
+    plunkConfigured: boolean;
     fromConfigured: boolean;
     fromAddress: string;
+    apiUrl?: string;
   };
 }
 

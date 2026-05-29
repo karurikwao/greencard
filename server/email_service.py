@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 
-RESEND_EMAILS_URL = 'https://api.resend.com/emails'
+PLUNK_SEND_URL = 'https://next-api.useplunk.com/v1/send'
 
 PLAN_LABELS = {
     'monthly': 'Premium Monthly',
@@ -26,7 +26,31 @@ def _frontend_url() -> str:
 
 
 def _from_address() -> str:
-    return os.getenv('EMAIL_FROM') or os.getenv('RESEND_FROM_EMAIL') or 'InterviewReady <onboarding@resend.dev>'
+    return (
+        os.getenv('PLUNK_FROM_EMAIL')
+        or os.getenv('EMAIL_FROM')
+        or 'InterviewReady <noreply@interviewready.app>'
+    )
+
+
+def _reply_address() -> Optional[str]:
+    return os.getenv('PLUNK_REPLY_TO') or os.getenv('EMAIL_REPLY_TO') or None
+
+
+def _clean_subject(subject: str) -> str:
+    return ' '.join((subject or '').split())[:998] or 'InterviewReady notification'
+
+
+def _tag_data(tags: Optional[List[Dict[str, str]]]) -> Dict[str, object]:
+    data: Dict[str, object] = {'source': {'value': 'interviewready', 'persistent': False}}
+
+    for tag in tags or []:
+        name = ''.join(ch if ch.isalnum() else '_' for ch in str(tag.get('name') or '').strip()).strip('_')
+        value = str(tag.get('value') or '').strip()
+        if name and value:
+            data[f'tag_{name}'] = {'value': value[:250], 'persistent': False}
+
+    return data
 
 
 def _idempotency_key(*parts: str) -> str:
@@ -43,42 +67,45 @@ def send_email(
     tags: Optional[List[Dict[str, str]]] = None,
     idempotency_key: Optional[str] = None,
 ) -> Dict[str, object]:
-    api_key = os.getenv('RESEND_API_KEY', '').strip()
+    api_key = (os.getenv('PLUNK_SECRET_KEY') or os.getenv('PLUNK_API_KEY') or '').strip()
 
     if not api_key:
-        print(f'[DEV] Email skipped: RESEND_API_KEY is not configured for "{subject}" to {to_email}')
+        print(f'[DEV] Email skipped: PLUNK_SECRET_KEY/PLUNK_API_KEY is not configured for "{subject}" to {to_email}')
         return {'success': True, 'skipped': True}
 
     payload = {
         'from': _from_address(),
-        'to': [to_email],
-        'subject': subject,
-        'html': html_body,
+        'to': to_email,
+        'subject': _clean_subject(subject),
+        'body': html_body or html_tools.escape(text_body or ''),
+        'data': _tag_data(tags),
     }
-    if text_body:
-        payload['text'] = text_body
-    if tags:
-        payload['tags'] = tags
+    reply_to = _reply_address()
+    if reply_to:
+        payload['reply'] = reply_to
 
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json',
     }
     if idempotency_key:
-        headers['Idempotency-Key'] = idempotency_key[:256]
+        payload['headers'] = {'X-InterviewReady-Idempotency-Key': idempotency_key[:256]}
 
-    timeout_seconds = float(os.getenv('RESEND_TIMEOUT_SECONDS', '5'))
+    timeout_seconds = float(os.getenv('PLUNK_TIMEOUT_SECONDS', '5'))
+    send_url = os.getenv('PLUNK_API_URL', PLUNK_SEND_URL)
 
     try:
-        response = requests.post(RESEND_EMAILS_URL, json=payload, headers=headers, timeout=timeout_seconds)
+        response = requests.post(send_url, json=payload, headers=headers, timeout=timeout_seconds)
         if response.status_code >= 400:
-            print(f'Resend email failed ({response.status_code}) for "{subject}": {response.text[:500]}')
+            print(f'Plunk email failed ({response.status_code}) for "{subject}": {response.text[:500]}')
             return {'success': False, 'error': response.text[:500], 'status_code': response.status_code}
 
         data = response.json()
-        return {'success': True, 'id': data.get('id')}
+        emails = (data.get('data') or {}).get('emails') or []
+        email_id = emails[0].get('email') if emails and isinstance(emails[0], dict) else None
+        return {'success': True, 'id': email_id, 'provider': 'plunk'}
     except requests.RequestException as exc:
-        print(f'Resend email request failed for "{subject}": {exc}')
+        print(f'Plunk email request failed for "{subject}": {exc}')
         return {'success': False, 'error': str(exc)}
 
 

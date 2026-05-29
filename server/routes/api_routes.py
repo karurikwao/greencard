@@ -647,8 +647,8 @@ def admin_system_status():
     stripe_secret = os.getenv('STRIPE_SECRET_KEY', '')
     stripe_publishable = os.getenv('STRIPE_PUBLISHABLE_KEY', '') or os.getenv('VITE_STRIPE_PUBLISHABLE_KEY', '')
     stripe_webhook = os.getenv('STRIPE_WEBHOOK_SECRET', '')
-    resend_api_key = os.getenv('RESEND_API_KEY', '')
-    email_from = os.getenv('EMAIL_FROM') or os.getenv('RESEND_FROM_EMAIL') or ''
+    plunk_api_key = os.getenv('PLUNK_SECRET_KEY', '') or os.getenv('PLUNK_API_KEY', '')
+    email_from = os.getenv('PLUNK_FROM_EMAIL') or os.getenv('EMAIL_FROM') or ''
 
     if stripe_secret.startswith('sk_test_'):
         stripe_mode = 'test'
@@ -751,11 +751,11 @@ def admin_system_status():
             'urlConfigured': bool(os.getenv('DATABASE_URL')),
         },
         'email': {
-            'provider': 'resend' if resend_api_key else ('smtp' if os.getenv('SMTP_HOST') else 'dev'),
-            'resendConfigured': bool(resend_api_key),
-            'smtpConfigured': bool(os.getenv('SMTP_HOST') and os.getenv('SMTP_USER')),
+            'provider': 'plunk' if plunk_api_key else 'dev',
+            'plunkConfigured': bool(plunk_api_key),
             'fromConfigured': bool(email_from),
             'fromAddress': email_from,
+            'apiUrl': os.getenv('PLUNK_API_URL', 'https://next-api.useplunk.com/v1/send'),
         },
     })
 
