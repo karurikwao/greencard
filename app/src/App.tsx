@@ -1836,7 +1836,7 @@ function HomePage({
   };
 
   const adminOverlays = showAdmin ? (
-    isSuperAdmin ? (
+    isAdmin || isSuperAdmin ? (
       <SuperAdminPortal onClose={() => setShowAdmin(false)} />
     ) : (
       <AdminPanel onClose={() => setShowAdmin(false)} />

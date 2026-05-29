@@ -667,12 +667,6 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               </button>
             </form>
           </CardContent>
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </Card>
       </div>
     );

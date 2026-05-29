@@ -177,12 +177,13 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
   if (isAuthenticated) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md overflow-hidden border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50 to-sky-50 shadow-2xl shadow-emerald-200/70">
+          <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600" />
           <CardContent className="p-6 text-center">
             <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
-            <h2 className="text-xl font-medium text-slate-800 mb-2">You're signed in!</h2>
-            <p className="text-slate-500 mb-4">Your progress will be saved to the cloud.</p>
-            <Button onClick={onClose} className="bg-slate-700 hover:bg-slate-800">
+            <h2 className="text-xl font-semibold text-slate-950 mb-2">You're signed in!</h2>
+            <p className="text-slate-700 mb-4">Your progress will be saved to the cloud.</p>
+            <Button onClick={onClose} className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white hover:from-blue-800 hover:to-cyan-700">
               Continue
             </Button>
           </CardContent>
@@ -193,19 +194,20 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-md relative">
+      <Card className="relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/95 to-cyan-50/80 shadow-2xl shadow-blue-200/70">
+        <div className="h-1.5 bg-gradient-to-r from-blue-700 via-cyan-500 to-emerald-500" />
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+          className="absolute right-4 top-4 rounded-full p-1 text-slate-500 hover:bg-white hover:text-slate-900"
         >
           <X className="w-5 h-5" />
         </button>
 
         <CardHeader>
-          <CardTitle className="text-xl text-slate-800">
+          <CardTitle className="text-xl font-semibold text-slate-950">
             {showResetForm ? 'Reset Password' : activeTab === 'signup' ? 'Create your free account' : 'Welcome'}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-slate-700">
             {showResetForm 
               ? 'Enter your email to receive reset instructions'
               : activeTab === 'signup'
@@ -233,7 +235,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
           {showResetForm ? (
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="reset-email">Email</Label>
+                <Label htmlFor="reset-email" className="font-semibold text-slate-900">Email</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
@@ -242,7 +244,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                     placeholder="you@example.com"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
-                    className="pl-10"
+                    className="border-slate-300 bg-white pl-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                     required
                   />
                 </div>
@@ -250,7 +252,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
               <Button
                 type="submit"
-                className="w-full bg-slate-700 hover:bg-slate-800"
+                className="w-full bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700"
                 disabled={isLoading}
               >
                 {isLoading ? 'Sending...' : 'Send Reset Link'}
@@ -259,14 +261,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
               <button
                 type="button"
                 onClick={() => setShowResetForm(false)}
-                className="w-full text-center text-sm text-slate-500 hover:text-slate-700"
+                className="w-full text-center text-sm font-semibold text-blue-700 hover:text-blue-900"
               >
                 Back to login
               </button>
             </form>
           ) : (
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'signup')}>
-              <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsList className="grid w-full grid-cols-2 mb-6 bg-white/80 p-1 shadow-inner ring-1 ring-blue-100">
                 <TabsTrigger value="login">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Create Account</TabsTrigger>
               </TabsList>
@@ -274,7 +276,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
+                    <Label htmlFor="login-email" className="font-semibold text-slate-900">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <Input
@@ -283,23 +285,23 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                         placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
+                        className="border-slate-300 bg-white pl-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                         required
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
+                    <Label htmlFor="login-password" className="font-semibold text-slate-900">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <Input
                         id="login-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="Password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
+                        className="border-slate-300 bg-white pl-10 pr-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                         required
                       />
                       <button
@@ -315,14 +317,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                   <button
                     type="button"
                     onClick={() => setShowResetForm(true)}
-                    className="text-sm text-slate-500 hover:text-slate-700"
+                    className="text-sm font-semibold text-blue-700 hover:text-blue-900"
                   >
                     Forgot password?
                   </button>
 
                   <Button
                     type="submit"
-                    className="w-full bg-slate-700 hover:bg-slate-800"
+                    className="w-full bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700"
                     disabled={isLoading}
                   >
                     {isLoading ? 'Signing in...' : 'Sign In'}
@@ -334,14 +336,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                       <Separator className="w-full" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-slate-400">Or continue with</span>
+                      <span className="bg-blue-50 px-2 text-slate-600">Or continue with</span>
                     </div>
                   </div>
 
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full"
+                    className="w-full border-blue-200 bg-white text-slate-950 hover:bg-blue-50"
                     onClick={() => handleOAuthSignIn('google')}
                     disabled={isOAuthLoading}
                   >
@@ -349,7 +351,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                     {isOAuthLoading ? 'Connecting...' : 'Google'}
                   </Button>
 
-                  <p className="text-xs text-slate-400 text-center">
+                  <p className="text-xs text-slate-600 text-center">
                     You can also use the app without signing in. Your data will be stored locally.
                   </p>
                 </form>
@@ -359,7 +361,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="first-name">First Name</Label>
+                      <Label htmlFor="first-name" className="font-semibold text-slate-900">First Name</Label>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
@@ -367,23 +369,24 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                           placeholder="John"
                           value={firstName}
                           onChange={(e) => setFirstName(e.target.value)}
-                          className="pl-10"
+                          className="border-slate-300 bg-white pl-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="last-name">Last Name</Label>
+                      <Label htmlFor="last-name" className="font-semibold text-slate-900">Last Name</Label>
                       <Input
                         id="last-name"
                         placeholder="Doe"
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
+                        className="border-slate-300 bg-white text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
+                    <Label htmlFor="signup-email" className="font-semibold text-slate-900">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <Input
@@ -392,23 +395,23 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                         placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
+                        className="border-slate-300 bg-white pl-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                         required
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
+                    <Label htmlFor="signup-password" className="font-semibold text-slate-900">Password</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="Password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
+                        className="border-slate-300 bg-white pl-10 pr-10 text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                         required
                         minLength={6}
                       />
@@ -420,12 +423,12 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-400">Must be at least 6 characters</p>
+                    <p className="text-xs text-slate-600">Must be at least 6 characters</p>
                   </div>
 
                   {/* Promo Code Input */}
                   <div className="space-y-2">
-                    <Label htmlFor="promo-code">Promo Code (Optional)</Label>
+                    <Label htmlFor="promo-code" className="font-semibold text-slate-900">Promo Code (Optional)</Label>
                     <div className="relative">
                       <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <Input
@@ -435,7 +438,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                         value={promoCode}
                         onChange={(e) => handlePromoCodeChange(e.target.value)}
                         className={cn(
-                          "pl-10 uppercase",
+                          "border-slate-300 bg-white pl-10 uppercase text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500",
                           codeValidation?.valid && "border-emerald-300 focus-visible:ring-emerald-200",
                           codeValidation && !codeValidation.valid && "border-amber-300 focus-visible:ring-amber-200"
                         )}
@@ -454,7 +457,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                       </p>
                     )}
                     {!codeValidation && promoCode && promoCode.length < 3 && (
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-600">
                         Enter a valid promo code for discount
                       </p>
                     )}
@@ -462,7 +465,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
                   <Button
                     type="submit"
-                    className="w-full bg-slate-700 hover:bg-slate-800"
+                    className="w-full bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700"
                     disabled={isLoading}
                   >
                     {isLoading ? 'Creating account...' : 'Create Account'}
@@ -474,14 +477,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                       <Separator className="w-full" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-slate-400">Or sign up with</span>
+                      <span className="bg-blue-50 px-2 text-slate-600">Or sign up with</span>
                     </div>
                   </div>
 
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full"
+                    className="w-full border-blue-200 bg-white text-slate-950 hover:bg-blue-50"
                     onClick={() => handleOAuthSignIn('google')}
                     disabled={isOAuthLoading}
                   >
@@ -489,7 +492,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                     {isOAuthLoading ? 'Connecting...' : 'Google'}
                   </Button>
 
-                  <p className="text-xs text-slate-400 text-center">
+                  <p className="text-xs text-slate-600 text-center">
                     By creating an account, you agree to our Terms of Service and Privacy Policy.
                   </p>
                 </form>

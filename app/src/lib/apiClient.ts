@@ -170,6 +170,7 @@ export const apiClient = {
     },
 
     async getUser() {
+      if (!getToken()) return { data: null, error: null };
       return request<AuthUser>('/api/auth/user', { method: 'GET' });
     },
 

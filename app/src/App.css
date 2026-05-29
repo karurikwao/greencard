@@ -642,7 +642,6 @@ section {
 
 main [data-slot="card"]:not([class*="text-white"]),
 section [data-slot="card"]:not([class*="text-white"]),
-[data-slot="dialog-content"],
 .premium-upgrade-shell {
   --panel-accent: var(--panel-blue);
   --panel-accent-2: var(--panel-cyan);
@@ -661,7 +660,6 @@ section [data-slot="card"]:not([class*="text-white"]),
 
 main [data-slot="card"]:not([class*="text-white"])::before,
 section [data-slot="card"]:not([class*="text-white"])::before,
-[data-slot="dialog-content"]::before,
 .premium-upgrade-shell::before {
   content: "";
   position: absolute;
@@ -825,8 +823,29 @@ textarea::placeholder {
 }
 
 [data-slot="dialog-content"] {
+  --panel-accent: var(--panel-blue);
+  --panel-accent-2: var(--panel-cyan);
+  --panel-glow: rgba(var(--panel-blue), 0.14);
+  position: fixed !important;
+  border-width: 2px !important;
+  border-color: rgba(var(--panel-accent), 0.40) !important;
+  background:
+    linear-gradient(135deg, rgba(var(--panel-accent), 0.16) 0%, rgba(255, 255, 255, 0.98) 46%, rgba(var(--panel-accent-2), 0.14) 100%) !important;
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.14),
+    0 8px 24px var(--panel-glow) !important;
+  color: var(--panel-ink);
   overflow-x: hidden !important;
   overflow-y: auto !important;
+}
+
+[data-slot="dialog-content"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, rgb(var(--panel-accent)), rgb(var(--panel-accent-2)), rgb(var(--panel-accent)));
+  pointer-events: none;
 }
 
 .hero-study-cta {

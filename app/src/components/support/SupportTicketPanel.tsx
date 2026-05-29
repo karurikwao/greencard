@@ -145,10 +145,13 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
   }
 
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className={cn('overflow-hidden border-2 border-amber-200 bg-gradient-to-br from-white via-amber-50/80 to-sky-50/80 shadow-lg shadow-amber-100/60', className)}>
+      <CardHeader className="flex flex-row items-center justify-between border-b border-amber-200/70 bg-gradient-to-r from-amber-100/90 via-white to-sky-100/90 pb-4">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg">Support Tickets</CardTitle>
+          <div className="rounded-xl bg-white p-2 text-amber-700 shadow-sm ring-1 ring-amber-200">
+            <HelpCircle className="h-5 w-5" />
+          </div>
+          <CardTitle className="text-lg text-slate-950">Support Tickets</CardTitle>
           {tickets.filter(t => t.status === 'open').length > 0 && (
             <Badge variant="secondary" className="bg-amber-100 text-amber-700">
               {tickets.filter(t => t.status === 'open').length} open
@@ -163,35 +166,37 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
           }
         }}>
           <DialogTrigger asChild>
-            <Button size="sm">
+            <Button size="sm" className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700">
               <Plus className="w-4 h-4 mr-1" />
               New Ticket
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Create Support Ticket</DialogTitle>
-              <DialogDescription>
+          <DialogContent className="top-4 max-h-[calc(100dvh-2rem)] translate-y-0 overflow-y-auto border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/95 to-emerald-50/80 p-0 shadow-2xl shadow-blue-200/70 sm:max-w-[560px]">
+            <div className="h-1.5 bg-gradient-to-r from-blue-700 via-cyan-500 to-emerald-500" />
+            <DialogHeader className="px-6 pb-2 pt-6">
+              <DialogTitle className="text-xl font-semibold text-slate-950">Create Support Ticket</DialogTitle>
+              <DialogDescription className="text-slate-700">
                 Describe your issue and we'll help you as soon as possible.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 px-6 py-4">
               <div className="space-y-2">
-                <Label htmlFor="subject">Subject</Label>
+                <Label htmlFor="subject" className="font-semibold text-slate-900">Subject</Label>
                 <Input
                   id="subject"
                   placeholder="Brief description of your issue"
                   value={newTicket.subject}
                   onChange={(e) => setNewTicket(prev => ({ ...prev, subject: e.target.value }))}
+                  className="border-slate-300 bg-white text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
+                <Label htmlFor="category" className="font-semibold text-slate-900">Category</Label>
                 <Select
                   value={newTicket.category}
                   onValueChange={(value) => setNewTicket(prev => ({ ...prev, category: value as TicketCategory }))}
                 >
-                  <SelectTrigger id="category">
+                  <SelectTrigger id="category" className="border-slate-300 bg-white text-slate-950 focus:ring-blue-500">
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -204,20 +209,21 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="message">Message</Label>
+                <Label htmlFor="message" className="font-semibold text-slate-900">Message</Label>
                 <Textarea
                   id="message"
                   placeholder="Please describe your issue in detail..."
-                  rows={4}
+                  rows={5}
                   value={newTicket.message}
                   onChange={(e) => setNewTicket(prev => ({ ...prev, message: e.target.value }))}
+                  className="border-slate-300 bg-white text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
                 />
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <div className="space-y-3 rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-3 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-slate-600" />
-                    <span className="text-sm font-medium text-slate-800">AI support assistant</span>
+                    <Bot className="w-4 h-4 text-cyan-700" />
+                    <span className="text-sm font-semibold text-slate-900">AI support assistant</span>
                   </div>
                   <Button
                     type="button"
@@ -255,11 +261,11 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                 )}
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="sticky bottom-0 border-t border-blue-100 bg-white/95 px-6 py-4 backdrop-blur">
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateTicket} disabled={isSubmitting}>
+              <Button onClick={handleCreateTicket} disabled={isSubmitting} className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700">
                 {isSubmitting ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
@@ -276,13 +282,15 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
           </DialogContent>
         </Dialog>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <ScrollArea className="h-[300px]">
           {tickets.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              <HelpCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No support tickets yet</p>
-              <p className="text-sm">Need help? Create a ticket and we'll assist you</p>
+            <div className="rounded-2xl border border-dashed border-amber-300 bg-white/70 py-8 text-center text-slate-700">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-sky-200 text-slate-900 shadow-sm">
+                <HelpCircle className="h-7 w-7" />
+              </div>
+              <p className="font-semibold text-slate-950">No support tickets yet</p>
+              <p className="text-sm text-slate-700">Need help? Create a ticket and we'll assist you</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -328,14 +336,15 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
 
       {/* Ticket Detail Dialog */}
       <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="sm:max-w-[550px]">
+        <DialogContent className="top-4 max-h-[calc(100dvh-2rem)] translate-y-0 overflow-y-auto border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/95 to-emerald-50/80 p-0 shadow-2xl shadow-blue-200/70 sm:max-w-[600px]">
           {selectedTicket && (
             <>
-              <DialogHeader>
+              <div className="h-1.5 bg-gradient-to-r from-blue-700 via-cyan-500 to-emerald-500" />
+              <DialogHeader className="px-6 pb-2 pt-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <DialogTitle className="text-lg">{selectedTicket.subject}</DialogTitle>
-                    <DialogDescription className="mt-1">
+                    <DialogTitle className="text-lg font-semibold text-slate-950">{selectedTicket.subject}</DialogTitle>
+                    <DialogDescription className="mt-1 text-slate-700">
                       Ticket #{selectedTicket.id.slice(0, 8)} - {TICKET_CATEGORIES.find(c => c.value === selectedTicket.category)?.label}
                     </DialogDescription>
                   </div>
@@ -344,8 +353,8 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   </Badge>
                 </div>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="bg-slate-50 p-4 rounded-lg">
+              <div className="space-y-4 px-6 py-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedTicket.message}</p>
                   <p className="text-xs text-slate-400 mt-2">
                     Submitted on {new Date(selectedTicket.createdAt).toLocaleString()}
@@ -353,7 +362,7 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                 </div>
                 
                 {selectedTicket.adminReply && (
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle className="w-4 h-4 text-blue-600" />
                       <span className="text-sm font-medium text-blue-900">Support Team Response</span>
@@ -367,7 +376,7 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   </div>
                 )}
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky bottom-0 border-t border-blue-100 bg-white/95 px-6 py-4 backdrop-blur">
                 <Button variant="outline" onClick={() => setSelectedTicket(null)}>
                   Close
                 </Button>

@@ -174,20 +174,20 @@ function StatusLoadState({
 }
 
 export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
-  const { isSuperAdmin, user } = useOptionalAuth();
+  const { isAdmin, isSuperAdmin, user } = useOptionalAuth();
   const [activeTab, setActiveTab] = useState('overview');
   // Notification state - available for future use
   // const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Redirect if not superadmin
-  if (!isSuperAdmin) {
+  // Redirect if not an admin
+  if (!isAdmin && !isSuperAdmin) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
             <Shield className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-medium text-slate-800 mb-2">Access Denied</h2>
-            <p className="text-slate-500 mb-4">You don't have permission to access the admin portal.</p>
+            <p className="text-slate-500 mb-4">You need an admin role to access the admin portal.</p>
             <Button onClick={onClose} className="bg-slate-700 hover:bg-slate-800">
               Close
             </Button>
@@ -205,8 +205,10 @@ export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <Shield className="w-6 h-6 text-slate-700" />
-              <h1 className="text-xl font-medium text-slate-800">SuperAdmin Portal</h1>
-              <Badge variant="secondary" className="bg-slate-100 text-slate-600">v2.0</Badge>
+              <h1 className="text-xl font-medium text-slate-800">Admin Portal</h1>
+              <Badge variant="secondary" className="bg-slate-100 text-slate-600">
+                {isSuperAdmin ? 'SuperAdmin' : 'Admin'}
+              </Badge>
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-slate-500">{user?.email}</span>
