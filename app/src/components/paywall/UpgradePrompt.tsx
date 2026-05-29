@@ -177,39 +177,42 @@ export function UpgradePrompt({
   const eligiblePlans = PAID_PLANS.filter(
     plan => plan.features[feature]
   );
+  const isPdfPrompt = context === 'pdf_locked';
 
   const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-2xl',
-    lg: 'max-w-4xl',
+    sm: 'max-w-lg',
+    md: 'max-w-3xl',
+    lg: 'max-w-5xl',
   };
+  const modalWidthClass = isPdfPrompt ? 'max-w-6xl' : sizeClasses[size];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-auto">
-      <Card className={cn('w-full relative', sizeClasses[size])}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-6">
+      <Card className={cn('relative w-full max-h-[calc(100vh-2rem)] overflow-y-auto', modalWidthClass)}>
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+          className="absolute right-4 top-4 z-10 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Close upgrade options"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <CardHeader className="text-center pb-4">
+        <CardHeader className={cn('text-center pb-4', isPdfPrompt && 'px-5 pt-7 sm:px-8')}>
           <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Lock className="w-6 h-6 text-amber-600" />
           </div>
-          <CardTitle className="text-xl">
+          <CardTitle className={cn('text-xl', isPdfPrompt && 'text-2xl')}>
             {displayTitle}
           </CardTitle>
-          <CardDescription className="max-w-md mx-auto text-base">
+          <CardDescription className={cn('max-w-md mx-auto text-base', isPdfPrompt && 'max-w-2xl')}>
             {displayMessage}
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6">
+        <CardContent className={cn('space-y-6', isPdfPrompt && 'px-5 pb-7 sm:px-8')}>
           {/* Current plan info */}
-          <div className="bg-slate-50 rounded-lg p-4">
+          <div className={cn('bg-slate-50 rounded-lg p-4', isPdfPrompt && 'mx-auto max-w-3xl')}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-slate-600">Your Current Plan</span>
               <Badge variant="secondary">{currentPlanConfig.name}</Badge>
@@ -229,8 +232,8 @@ export function UpgradePrompt({
             </h4>
             
             <div className={cn(
-              'grid gap-3',
-              size === 'sm' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'
+              isPdfPrompt ? 'grid grid-cols-1 gap-4 md:grid-cols-3 lg:gap-5' : 'grid gap-3',
+              !isPdfPrompt && (size === 'sm' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3')
             )}>
               {eligiblePlans.map((plan) => {
                 const Icon = getPlanIcon(plan.id);
@@ -242,6 +245,7 @@ export function UpgradePrompt({
                     key={plan.id}
                     className={cn(
                       'relative rounded-xl border-2 p-4 transition-all cursor-pointer hover:shadow-md',
+                      isPdfPrompt && 'p-5 sm:p-6',
                       isPopular
                         ? 'border-blue-200 bg-blue-50/30 ring-1 ring-blue-100'
                         : isRecommended
@@ -265,13 +269,13 @@ export function UpgradePrompt({
                       <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white mb-2">
                         <Icon className="w-5 h-5 text-slate-600" />
                       </div>
-                      <h5 className="font-medium text-slate-800 text-sm">{plan.name}</h5>
-                      <div className="text-lg font-bold text-slate-900">
+                      <h5 className={cn('font-medium text-slate-800 text-sm', isPdfPrompt && 'text-base')}>{plan.name}</h5>
+                      <div className={cn('text-lg font-bold text-slate-900', isPdfPrompt && 'text-xl')}>
                         {'priceLabel' in plan ? plan.priceLabel : 'Free'}
                       </div>
                     </div>
 
-                    <ul className="space-y-1.5 mb-3">
+                    <ul className={cn('space-y-1.5 mb-3', isPdfPrompt && 'space-y-2 mb-4')}>
                       <li className="flex items-center gap-2 text-xs text-slate-600">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                         <span>{featureName}</span>
