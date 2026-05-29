@@ -9,6 +9,7 @@
  */
 
 import { Sparkles, Lock, X, Check, Crown, Gift, Calendar, Clock } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -186,7 +187,7 @@ export function UpgradePrompt({
   };
   const modalWidthClass = isPdfPrompt ? 'max-w-6xl' : sizeClasses[size];
 
-  return (
+  const prompt = (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-6">
       <Card className={cn('relative w-full max-h-[calc(100vh-2rem)] overflow-y-auto', modalWidthClass)}>
         {/* Close button */}
@@ -339,6 +340,12 @@ export function UpgradePrompt({
       </Card>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return prompt;
+  }
+
+  return createPortal(prompt, document.body);
 }
 
 /**
