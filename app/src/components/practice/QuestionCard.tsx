@@ -29,17 +29,17 @@ export function QuestionCard({
   const progress = (questionNumber / totalQuestions) * 100;
 
   return (
-    <Card className={cn('overflow-hidden border-slate-200/60 shadow-sm', className)}>
-      {/* Progress Header - Minimal */}
-      <div className="bg-slate-50/50 border-b border-slate-100 px-5 py-3">
+    <Card className={cn('overflow-hidden border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/40 to-amber-50/30 shadow-xl shadow-slate-200/80', className)}>
+      {/* Progress Header */}
+      <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-amber-50 px-5 py-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-600 uppercase">
+          <span className="text-xs font-extrabold uppercase tracking-wide text-blue-800">
             Question {questionNumber} of {totalQuestions}
           </span>
           <div className="flex items-center gap-2">
-            <div className="w-20 h-1 bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-blue-100">
               <div 
-                className="h-full bg-slate-400 rounded-full transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -51,11 +51,11 @@ export function QuestionCard({
         {/* Question Prompt */}
         <div className="mb-8">
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-200">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div className="flex-1 pt-1">
-              <h3 className="text-xl sm:text-2xl text-slate-950 leading-relaxed font-medium">
+              <h3 className="text-xl font-semibold leading-relaxed text-slate-950 sm:text-2xl">
                 {question.prompt}
               </h3>
             </div>
@@ -67,9 +67,9 @@ export function QuestionCard({
           <Button
             onClick={() => setIsRevealed(true)}
             variant="outline"
-            className="w-full py-6 border-slate-300 hover:border-slate-500 hover:bg-slate-50 text-slate-700 hover:text-slate-950 transition-all group text-base font-medium"
+            className="group w-full border-0 bg-gradient-to-r from-blue-600 to-cyan-600 py-6 text-base font-bold text-white shadow-lg shadow-blue-200 transition-all hover:from-blue-700 hover:to-cyan-700 hover:text-white"
           >
-            <Eye className="w-4 h-4 mr-2 text-slate-400 group-hover:text-slate-600" />
+            <Eye className="mr-2 h-4 w-4 text-white" />
             View suggested response
           </Button>
         )}
@@ -79,17 +79,17 @@ export function QuestionCard({
           <div className="space-y-5 animate-in fade-in duration-500">
             {/* Sample Answer - Calm, professional */}
             {question.sampleAnswer && (
-              <div className="bg-slate-50 border border-slate-300 rounded-lg p-6">
+              <div className="rounded-xl border-2 border-blue-100 bg-gradient-to-br from-blue-50 via-white to-amber-50 p-6 shadow-inner">
                 <div className="flex items-center gap-2 mb-4">
-                  <Sparkles className="w-4 h-4 text-slate-600" />
-                  <span className="text-sm font-semibold text-slate-800">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm font-extrabold text-blue-900">
                     One way to respond
                   </span>
                 </div>
-                <blockquote className="text-slate-950 leading-8 pl-4 border-l-2 border-slate-400">
+                <blockquote className="border-l-4 border-blue-500 pl-4 font-medium leading-8 text-slate-950">
                   {question.sampleAnswer}
                 </blockquote>
-                <p className="text-xs font-medium text-slate-600 mt-4">
+                <p className="mt-4 text-xs font-bold text-blue-800">
                   Adapt this to match your own experience and speaking style.
                 </p>
               </div>
@@ -124,7 +124,7 @@ export function QuestionCard({
               onClick={() => setIsRevealed(false)}
               variant="ghost"
               size="sm"
-              className="text-slate-600 hover:text-slate-900"
+              className="font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-900"
             >
               <EyeOff className="w-4 h-4 mr-2" />
               Hide response

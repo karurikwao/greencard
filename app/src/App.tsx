@@ -128,6 +128,7 @@ import { BillingCancelPage } from '@/pages/billing/BillingCancelPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { AccountSettingsPage } from '@/pages/AccountSettingsPage';
 import { usePricing } from '@/hooks/usePricing';
+import { cn } from '@/lib/utils';
 import { AnnouncementBanner, TrustSnippets, ContentBlocks } from '@/components/content';
 import { VerificationCodeInjector } from '@/components/verification/VerificationCodeInjector';
 import { useCaptureReferralOnMount } from '@/hooks/useReferralTracking';
@@ -455,6 +456,42 @@ function getIcon(iconName: string): ElementType {
   return iconMap[iconName] || FileText;
 }
 
+const topicAccentThemes = [
+  {
+    shell: 'border-blue-200 bg-gradient-to-br from-white via-blue-50/80 to-cyan-50/60 hover:border-blue-400 hover:shadow-blue-200/80',
+    icon: 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-200',
+    badge: 'bg-blue-600 text-white shadow-sm shadow-blue-200 ring-1 ring-blue-200',
+    button: 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md shadow-blue-200',
+    bar: 'from-blue-500 via-cyan-400 to-emerald-400',
+  },
+  {
+    shell: 'border-amber-200 bg-gradient-to-br from-white via-amber-50/80 to-orange-50/60 hover:border-amber-400 hover:shadow-amber-200/80',
+    icon: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-200',
+    badge: 'bg-amber-500 text-white shadow-sm shadow-amber-200 ring-1 ring-amber-200',
+    button: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-md shadow-amber-200',
+    bar: 'from-amber-400 via-orange-400 to-rose-400',
+  },
+  {
+    shell: 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50/80 to-teal-50/60 hover:border-emerald-400 hover:shadow-emerald-200/80',
+    icon: 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-200',
+    badge: 'bg-emerald-600 text-white shadow-sm shadow-emerald-200 ring-1 ring-emerald-200',
+    button: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-200',
+    bar: 'from-emerald-500 via-teal-400 to-cyan-400',
+  },
+  {
+    shell: 'border-rose-200 bg-gradient-to-br from-white via-rose-50/80 to-pink-50/60 hover:border-rose-400 hover:shadow-rose-200/80',
+    icon: 'bg-gradient-to-br from-rose-600 to-pink-500 text-white shadow-lg shadow-rose-200',
+    badge: 'bg-rose-600 text-white shadow-sm shadow-rose-200 ring-1 ring-rose-200',
+    button: 'bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 shadow-md shadow-rose-200',
+    bar: 'from-rose-500 via-pink-400 to-orange-400',
+  },
+];
+
+function getTopicAccent(topicId: string) {
+  const hash = topicId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return topicAccentThemes[hash % topicAccentThemes.length];
+}
+
 // ==================== COMPONENTS ====================
 
 function Navigation({ navigate }: { navigate: (page: Page) => void }) {
@@ -744,29 +781,37 @@ function TopicCard({
   isSaved: boolean;
 }) {
   const Icon = getIcon(topic.icon);
+  const accent = getTopicAccent(topic.id);
   
   return (
-    <Card className={`group hover:shadow-lg transition-all duration-300 border-slate-200 hover:border-blue-300 ${isReviewed ? 'bg-green-50/30 border-green-200' : ''}`}>
-      <CardHeader className="pb-3">
+    <Card className={cn(
+      'group relative overflow-hidden border-2 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
+      accent.shell,
+      isReviewed && 'border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-teal-50'
+    )}>
+      <div className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r', accent.bar)} />
+      <CardHeader className="pb-3 pt-5">
         <div className="flex items-start justify-between">
-          <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-blue-100 transition-colors">
-            <Icon className="h-5 w-5 text-slate-600 group-hover:text-blue-600" />
+          <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105', accent.icon)}>
+            <Icon className="h-5 w-5" />
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {isSaved && <Badge className="bg-blue-100 text-blue-700 border-0 font-semibold"><Bookmark className="h-3 w-3 mr-1" />Saved</Badge>}
             {isReviewed && <Badge className="bg-green-100 text-green-700 border-0 font-semibold"><CheckCircle className="h-3 w-3 mr-1" />Done</Badge>}
-            <Badge variant="secondary" className="text-xs font-semibold">{topic.questionCount} questions</Badge>
+            <Badge className={cn('border-0 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide', accent.badge)}>
+              {topic.questionCount} questions
+            </Badge>
           </div>
         </div>
-        <CardTitle className="text-lg mt-3 group-hover:text-blue-600 transition-colors">{topic.title}</CardTitle>
-        <CardDescription className="text-sm line-clamp-2">{topic.description}</CardDescription>
+        <CardTitle className="mt-3 text-[1.08rem] leading-snug text-slate-950 transition-colors group-hover:text-slate-900">{topic.title}</CardTitle>
+        <CardDescription className="line-clamp-2 text-sm font-medium leading-relaxed text-slate-700">{topic.description}</CardDescription>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="flex flex-wrap items-center gap-2">
           <Button 
             size="sm" 
             onClick={onPractice}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+            className={cn('text-white font-bold', accent.button)}
           >
             <Play className="mr-1 h-4 w-4" />
             Practice
@@ -775,7 +820,7 @@ function TopicCard({
             variant="outline" 
             size="sm" 
             onClick={onView}
-            className="font-semibold"
+            className="border-slate-300 bg-white/90 font-bold text-slate-800 shadow-sm hover:border-blue-300 hover:bg-blue-50"
           >
             <FileText className="mr-1 h-4 w-4" />
             Details
@@ -784,7 +829,7 @@ function TopicCard({
             variant="ghost" 
             size="sm" 
             onClick={onToggleReviewed} 
-            className={isReviewed ? 'text-green-600 hover:text-green-700 hover:bg-green-100 font-semibold' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50 font-semibold ml-auto'}
+            className={isReviewed ? 'text-green-700 hover:text-green-800 hover:bg-green-100 font-bold' : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50 font-bold ml-auto'}
           >
             {isReviewed ? <><CheckCircle className="mr-1 h-4 w-4" /> Done</> : <><Square className="mr-1 h-4 w-4" /> Mark Done</>}
           </Button>

@@ -152,7 +152,7 @@ export function TopicPracticePage({
   const currentSavedStatus = isSavedForLater(currentQuestion.id);
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50/60 via-white to-amber-50/30">
       {/* Header */}
       <PracticeHeader
         topic={topic}
@@ -162,7 +162,7 @@ export function TopicPracticePage({
       />
 
       {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 pb-20">
+      <main className="mx-auto max-w-4xl px-4 py-8 pb-20 sm:px-6">
         <div className="space-y-6">
           {/* Question Navigation */}
           <div className="flex items-center justify-between">
@@ -171,22 +171,22 @@ export function TopicPracticePage({
               size="sm"
               aria-expanded={isQuestionListOpen}
               onClick={() => setIsQuestionListOpen(prev => !prev)}
-              className="border-slate-300 text-slate-700 font-medium"
+              className="border-blue-200 bg-white font-bold text-blue-800 shadow-sm shadow-blue-100 hover:border-blue-400 hover:bg-blue-50"
             >
               <List className="w-4 h-4 mr-2" />
               All questions
             </Button>
 
             {/* Quick Stats */}
-            <div className="text-sm font-medium text-slate-700">
-              <span className="text-slate-700">{currentIndex + 1}</span>
+            <div className="rounded-full bg-white px-3 py-1 text-sm font-extrabold text-slate-800 shadow-sm ring-1 ring-blue-100">
+              <span className="text-blue-700">{currentIndex + 1}</span>
               <span className="text-slate-500 mx-1.5">/</span>
               <span className="text-slate-600">{totalQuestions}</span>
             </div>
           </div>
 
           {isQuestionListOpen && (
-            <Card className="border-slate-300 shadow-sm">
+            <Card className="border-2 border-blue-100 bg-gradient-to-br from-white to-blue-50/60 shadow-xl shadow-slate-200/80">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3 mb-4">
                   <div>
@@ -215,13 +215,13 @@ export function TopicPracticePage({
                         key={q.id}
                         onClick={() => goToQuestion(idx)}
                         className={cn(
-                          'w-full text-left p-3 rounded-md border transition-all text-sm',
+                          'w-full rounded-lg border-2 p-3 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
                           isCurrent 
-                            ? 'bg-slate-100 border-slate-400' 
-                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50',
-                          comfort === 'understood' && !isCurrent && 'border-l-4 border-l-emerald-300',
-                          comfort === 'needs-practice' && !isCurrent && 'border-l-4 border-l-amber-300',
-                          comfort === 'nervous' && !isCurrent && 'border-l-4 border-l-rose-300',
+                            ? 'border-blue-500 bg-blue-50 text-blue-950' 
+                            : 'border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/50',
+                          comfort === 'understood' && !isCurrent && 'border-l-4 border-l-emerald-500',
+                          comfort === 'needs-practice' && !isCurrent && 'border-l-4 border-l-amber-500',
+                          comfort === 'nervous' && !isCurrent && 'border-l-4 border-l-rose-500',
                         )}
                       >
                         <div className="flex items-start gap-3">
@@ -254,7 +254,7 @@ export function TopicPracticePage({
           />
 
           {/* Comfort Actions */}
-          <Card className="border-slate-300 shadow-sm">
+          <Card className="border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/40 to-emerald-50/30 shadow-xl shadow-slate-200/80">
             <CardContent className="p-6">
               <ComfortActions
                 comfortStatus={currentComfortStatus}
@@ -266,7 +266,7 @@ export function TopicPracticePage({
                 <div className="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-blue-950">
+                      <p className="text-sm font-extrabold text-blue-950">
                         Progress saved on this device
                       </p>
                       <p className="mt-1 text-sm text-blue-900">
@@ -299,7 +299,7 @@ export function TopicPracticePage({
 
           {/* Related Questions */}
           {hasRelated && (
-            <Card className="border-slate-300 shadow-sm">
+            <Card className="border-2 border-amber-100 bg-gradient-to-br from-white via-amber-50/40 to-blue-50/30 shadow-xl shadow-slate-200/80">
               <CardContent className="p-6">
                 <RelatedQuestions
                   relatedQuestions={relatedQuestions}
@@ -311,7 +311,7 @@ export function TopicPracticePage({
 
           {/* Checklist Preview */}
           {topic.checklist.length > 0 && (
-            <Card className="border-slate-300 shadow-sm">
+            <Card className="border-2 border-emerald-100 bg-gradient-to-br from-white via-emerald-50/40 to-blue-50/30 shadow-xl shadow-slate-200/80">
               <CardContent className="p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <CheckCircle className="w-4 h-4 text-slate-600" />
@@ -319,7 +319,7 @@ export function TopicPracticePage({
                 </div>
                 <div className="space-y-2">
                   {topic.checklist.slice(0, 3).map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-3 p-3 rounded-md bg-slate-50/50">
+                    <div key={idx} className="flex items-start gap-3 rounded-lg border border-emerald-100 bg-white/85 p-3 shadow-sm">
                       <Checkbox id={`checklist-${idx}`} className="mt-0.5 border-slate-300" />
                       <Label 
                         htmlFor={`checklist-${idx}`}
@@ -340,12 +340,12 @@ export function TopicPracticePage({
           )}
 
           {/* Navigation */}
-          <div className="flex items-center justify-between pt-6 border-t border-slate-200/60">
+          <div className="flex items-center justify-between border-t border-blue-100 pt-6">
             <Button
               variant="outline"
               onClick={goToPrevious}
               disabled={currentIndex === 0}
-              className="min-w-[100px] border-slate-300 text-slate-700 font-medium"
+              className="min-w-[100px] border-blue-200 bg-white font-bold text-blue-800 hover:border-blue-400 hover:bg-blue-50"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
               Previous
@@ -354,7 +354,7 @@ export function TopicPracticePage({
             <Button
               onClick={goToNext}
               disabled={currentIndex >= totalQuestions - 1}
-              className="min-w-[100px] bg-slate-800 hover:bg-slate-900 text-white font-medium"
+              className="min-w-[100px] bg-gradient-to-r from-blue-600 to-cyan-600 font-bold text-white shadow-md shadow-blue-200 hover:from-blue-700 hover:to-cyan-700"
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />

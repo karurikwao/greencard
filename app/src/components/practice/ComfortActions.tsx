@@ -23,30 +23,34 @@ const comfortOptions: {
   icon: typeof CheckCircle;
   colors: string;
   selectedColors: string;
+  iconColors: string;
 }[] = [
   {
     value: 'understood',
     label: 'Comfortable',
     description: 'I can answer this confidently',
     icon: CheckCircle,
-    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
-    selectedColors: 'bg-emerald-50 border-emerald-300 text-emerald-900',
+    colors: 'bg-gradient-to-br from-white to-emerald-50/70 border-emerald-200 text-emerald-950 hover:border-emerald-400 hover:shadow-md hover:shadow-emerald-100',
+    selectedColors: 'bg-gradient-to-br from-emerald-100 to-white border-emerald-500 text-emerald-950 shadow-lg shadow-emerald-100 ring-2 ring-emerald-200',
+    iconColors: 'bg-emerald-600 text-white shadow-emerald-200',
   },
   {
     value: 'needs-practice',
     label: 'Needs review',
     description: 'I want to practice this more',
     icon: RefreshCw,
-    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
-    selectedColors: 'bg-amber-50 border-amber-300 text-amber-900',
+    colors: 'bg-gradient-to-br from-white to-amber-50/80 border-amber-200 text-amber-950 hover:border-amber-400 hover:shadow-md hover:shadow-amber-100',
+    selectedColors: 'bg-gradient-to-br from-amber-100 to-white border-amber-500 text-amber-950 shadow-lg shadow-amber-100 ring-2 ring-amber-200',
+    iconColors: 'bg-amber-500 text-white shadow-amber-200',
   },
   {
     value: 'nervous',
     label: 'Unsure',
     description: 'This question feels difficult',
     icon: AlertCircle,
-    colors: 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-slate-50',
-    selectedColors: 'bg-rose-50 border-rose-300 text-rose-900',
+    colors: 'bg-gradient-to-br from-white to-rose-50/80 border-rose-200 text-rose-950 hover:border-rose-400 hover:shadow-md hover:shadow-rose-100',
+    selectedColors: 'bg-gradient-to-br from-rose-100 to-white border-rose-500 text-rose-950 shadow-lg shadow-rose-100 ring-2 ring-rose-200',
+    iconColors: 'bg-rose-600 text-white shadow-rose-200',
   },
 ];
 
@@ -62,10 +66,10 @@ export function ComfortActions({
   return (
     <div className={cn('space-y-5', className)}>
       <div>
-        <div className="text-sm font-semibold text-slate-950 mb-1">
+        <div className="mb-1 text-sm font-extrabold text-slate-950">
           How comfortable are you with this question?
         </div>
-        <div className="text-xs font-medium text-slate-600">
+        <div className="text-xs font-bold text-blue-800">
           Track your confidence to focus your study time
         </div>
       </div>
@@ -80,20 +84,19 @@ export function ComfortActions({
               key={option.value}
               onClick={() => onComfortChange(isSelected ? null : option.value)}
               className={cn(
-                'relative flex flex-col items-start gap-2.5 p-4 rounded-lg border text-left transition-all duration-200',
-                'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2',
+                'relative flex flex-col items-start gap-3 rounded-xl border-2 p-4 text-left transition-all duration-200',
+                'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
                 isSelected ? option.selectedColors : option.colors
               )}
             >
-              <Icon className={cn(
-                'w-4 h-4',
-                isSelected ? 'opacity-90' : 'text-slate-600'
-              )} />
+              <span className={cn('flex h-8 w-8 items-center justify-center rounded-full shadow-md', option.iconColors)}>
+                <Icon className="h-4 w-4" />
+              </span>
               <div>
-                <div className="font-semibold text-sm">{option.label}</div>
+                <div className="text-sm font-extrabold">{option.label}</div>
                 <div className={cn(
-                  'text-xs mt-0.5 font-medium',
-                  isSelected ? 'opacity-90' : 'text-slate-600'
+                  'mt-0.5 text-xs font-semibold',
+                  isSelected ? 'opacity-95' : 'text-slate-700'
                 )}>
                   {option.description}
                 </div>
@@ -108,8 +111,8 @@ export function ComfortActions({
         size="sm"
         onClick={onSaveToggle}
         className={cn(
-          'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-medium',
-          isSavedForLater && 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+          'rounded-full px-4 font-bold text-blue-800 hover:bg-blue-50 hover:text-blue-950',
+          isSavedForLater && 'bg-blue-50 text-blue-700 hover:text-blue-900'
         )}
       >
         <SaveIcon className="w-4 h-4 mr-2" />

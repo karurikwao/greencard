@@ -522,18 +522,18 @@ export function Dashboard({
       icon: Trophy,
     },
   ];
-  const cardClass = 'border-slate-200 bg-white shadow-sm shadow-slate-200/60';
-  const surfaceClass = 'rounded-lg border border-slate-200 bg-slate-50/80 p-3';
+  const cardClass = 'border-2 border-blue-100 bg-white shadow-xl shadow-slate-200/70';
+  const surfaceClass = 'rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 shadow-sm';
 
   return (
-    <div className="min-h-screen bg-slate-100/70 pb-20 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-slate-50 to-amber-50/40 pb-20 text-slate-900">
       {/* Header */}
-      <header className="bg-white/95 border-b border-slate-200 sticky top-0 z-10 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/60 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <LayoutDashboard className="w-6 h-6 text-slate-600" />
-              <h1 className="text-xl font-semibold text-slate-900">Your Dashboard</h1>
+              <LayoutDashboard className="h-6 w-6 text-blue-700" />
+              <h1 className="text-xl font-extrabold text-slate-950">Your Dashboard</h1>
             </div>
             {canViewAdmin && onViewAdmin && (
               <Button variant="outline" size="sm" onClick={onViewAdmin}>
@@ -551,15 +551,15 @@ export function Dashboard({
           <CardContent className="p-6">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preparation center</p>
-                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Welcome back</h2>
-                <p className="mt-1 text-slate-700">Track progress, premium access, spouse practice, and support from one place.</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-blue-700">Preparation center</p>
+                <h2 className="mt-1 text-2xl font-extrabold text-slate-950">Welcome back</h2>
+                <p className="mt-1 font-medium text-slate-700">Track progress, premium access, spouse practice, and support from one place.</p>
               </div>
               
               {readinessResult ? (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left sm:text-right">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness Score</div>
+                  <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 px-4 py-3 text-left shadow-sm sm:text-right">
+                    <div className="text-xs font-extrabold uppercase tracking-wide text-blue-700">Readiness Score</div>
                     <div className="flex items-end gap-2 sm:justify-end">
                       <span className={cn(
                         'text-3xl font-bold leading-none',
@@ -576,7 +576,7 @@ export function Dashboard({
                   </Button>
                 </div>
               ) : (
-                <Button onClick={onViewProgress} className="bg-slate-900 hover:bg-slate-800">
+                <Button onClick={onViewProgress} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
                   <Sparkles className="w-4 h-4 mr-2" />
                   Take Readiness Check
                 </Button>
@@ -631,19 +631,19 @@ export function Dashboard({
                     key={`${item.label}-${index}`}
                     type="button"
                     onClick={item.onClick}
-                    className="group rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:border-slate-300 hover:bg-white hover:shadow-sm"
+                    className="group rounded-xl border-2 border-blue-100 bg-gradient-to-br from-white to-blue-50/60 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:shadow-lg hover:shadow-blue-100"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-md shadow-blue-200">
                         <Icon className="w-4 h-4" />
                       </div>
-                      <span className="text-xs font-semibold text-slate-500">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800">
                         {String(index + 1).padStart(2, '0')}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-950">{item.label}</p>
-                    <p className="mt-1 min-h-10 text-sm text-slate-700">{item.detail}</p>
-                    <span className="mt-3 inline-flex items-center text-sm font-medium text-slate-800 group-hover:text-slate-950">
+                    <p className="mt-3 text-sm font-extrabold text-slate-950">{item.label}</p>
+                    <p className="mt-1 min-h-10 text-sm font-medium text-slate-700">{item.detail}</p>
+                    <span className="mt-3 inline-flex items-center text-sm font-bold text-blue-800 group-hover:text-blue-950">
                       {item.action}
                       <ArrowRight className="ml-1 h-4 w-4" />
                     </span>
@@ -731,7 +731,7 @@ export function Dashboard({
             )}
 
             <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-              <Button onClick={onUpgrade} className="bg-slate-900 hover:bg-slate-800">
+              <Button onClick={onUpgrade} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
                 <CreditCard className="w-4 h-4 mr-2" />
                 {hasPremium ? 'View Billing Options' : 'Upgrade for Premium'}
               </Button>
@@ -826,7 +826,7 @@ export function Dashboard({
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-blue-50/60')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2 text-slate-950">
                 <Download className="w-4 h-4 text-slate-600" />
@@ -838,7 +838,7 @@ export function Dashboard({
             </CardHeader>
             <CardContent className="space-y-3">
               {pdfLibraryTopics.map(topic => (
-                <div key={topic.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <div key={topic.id} className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/60 px-3 py-3 shadow-sm">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-950">{topic.title}</p>
                     <p className="text-xs text-slate-600">{topic.questionCount} questions</p>
@@ -873,10 +873,10 @@ export function Dashboard({
                   <div
                     key={achievement.label}
                     className={cn(
-                      'flex items-center gap-3 rounded-lg border px-3 py-3',
+                      'flex items-center gap-3 rounded-xl border px-3 py-3 shadow-sm',
                       achievement.complete
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                        ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-emerald-900'
+                        : 'border-blue-100 bg-gradient-to-br from-white to-blue-50/70 text-slate-800'
                     )}
                   >
                     <div className={cn(
@@ -895,7 +895,7 @@ export function Dashboard({
             </CardContent>
           </Card>
 
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-blue-50/60')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2 text-slate-950">
                 <MessageSquare className="w-4 h-4 text-slate-600" />
@@ -957,7 +957,7 @@ export function Dashboard({
                 <p className="text-slate-700 mb-4">{lastPracticedTopic.title}</p>
                 <Button 
                   onClick={() => onPracticeTopic(lastPracticedTopic)}
-                  className="w-full bg-slate-900 hover:bg-slate-800"
+                  className="w-full bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-800"
                 >
                   Resume
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -967,7 +967,7 @@ export function Dashboard({
           )}
 
           {/* Quick Practice */}
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-blue-50/60')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-500" />
@@ -980,8 +980,7 @@ export function Dashboard({
               </p>
               <Button 
                 onClick={onStartQuickPractice}
-                variant="outline"
-                className="w-full"
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 font-bold text-white shadow-md shadow-blue-200 hover:from-blue-700 hover:to-cyan-700"
               >
                 Start 10-Minute Session
               </Button>
@@ -989,7 +988,7 @@ export function Dashboard({
           </Card>
 
           {/* Recommended Topics */}
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-amber-50/70')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-slate-500" />
@@ -1005,10 +1004,10 @@ export function Dashboard({
                     <button
                       key={topicId}
                       onClick={() => onPracticeTopic(topic)}
-                      className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
+                      className="w-full rounded-xl border border-amber-100 bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-50 hover:shadow-md"
                     >
-                      <div className="font-medium text-slate-900">{topic.title}</div>
-                      <div className="text-xs text-slate-600">{topic.questionCount} questions</div>
+                      <div className="font-extrabold text-slate-950">{topic.title}</div>
+                      <div className="text-xs font-bold text-amber-700">{topic.questionCount} questions</div>
                     </button>
                   );
                 })}
@@ -1017,7 +1016,7 @@ export function Dashboard({
           </Card>
 
           {/* Stress Review */}
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-rose-50/50')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-500" />
@@ -1028,8 +1027,8 @@ export function Dashboard({
               {stressQuestions.length > 0 ? (
                 <div className="space-y-2">
                   {stressQuestions.map((q, idx) => (
-                    <div key={idx} className="p-3 rounded-lg bg-rose-50/50 border border-rose-100">
-                      <p className="text-sm text-slate-700 line-clamp-2">{q.prompt}</p>
+                    <div key={idx} className="rounded-xl border border-rose-100 bg-white/85 p-3 shadow-sm">
+                      <p className="line-clamp-2 text-sm font-medium text-slate-800">{q.prompt}</p>
                     </div>
                   ))}
                   <Button variant="ghost" size="sm" onClick={onViewSaved} className="w-full">
@@ -1045,7 +1044,7 @@ export function Dashboard({
           </Card>
 
           {/* Timeline Progress */}
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-emerald-50/60')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-slate-500" />
@@ -1059,7 +1058,7 @@ export function Dashboard({
                   <span className="text-slate-800 font-medium">{timelineCompletion}%</span>
                 </div>
                 <Progress value={timelineCompletion} className="h-2" />
-                <Button variant="outline" size="sm" onClick={onViewTimeline} className="w-full">
+                <Button variant="outline" size="sm" onClick={onViewTimeline} className="w-full border-emerald-200 bg-white font-bold text-emerald-800 hover:border-emerald-400 hover:bg-emerald-50">
                   Continue Building
                 </Button>
               </div>
@@ -1067,7 +1066,7 @@ export function Dashboard({
           </Card>
 
           {/* Couple Practice */}
-          <Card className={cardClass}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-cyan-50/60')}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Users className="w-4 h-4 text-slate-500" />
@@ -1081,27 +1080,27 @@ export function Dashboard({
               {!featureAccess.coupleCompare && (
                 <Badge variant="secondary" className="mb-3">Premium</Badge>
               )}
-              <Button variant="outline" size="sm" onClick={onViewCouplePractice} className="w-full">
+              <Button variant="outline" size="sm" onClick={onViewCouplePractice} className="w-full border-cyan-200 bg-white font-bold text-cyan-800 hover:border-cyan-400 hover:bg-cyan-50">
                 Invite Partner
               </Button>
             </CardContent>
           </Card>
 
           {/* Mock Interview */}
-          <Card className={cn(cardClass, 'md:col-span-2')}>
+          <Card className={cn(cardClass, 'bg-gradient-to-br from-white via-blue-50/70 to-cyan-50/70 md:col-span-2')}>
             <CardContent className="p-6 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                  <Mic className="w-6 h-6 text-slate-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-700 to-cyan-600 text-white shadow-lg shadow-blue-200">
+                  <Mic className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-medium text-slate-800">Mock Interview</h3>
-                  <p className="text-sm text-slate-700">
+                  <h3 className="font-extrabold text-slate-950">Mock Interview</h3>
+                  <p className="text-sm font-medium text-slate-700">
                     Practice with a simulated interview experience
                   </p>
                 </div>
               </div>
-              <Button onClick={onStartMockInterview} className="bg-slate-900 hover:bg-slate-800">
+              <Button onClick={onStartMockInterview} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
                 Start Mock Interview
               </Button>
             </CardContent>

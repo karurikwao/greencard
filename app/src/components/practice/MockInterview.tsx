@@ -147,23 +147,24 @@ export function MockInterview({ onBack }: MockInterviewProps) {
 
   if (interviewState === 'intro') {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-4">
-        <Card className="max-w-lg w-full">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-blue-50/70 via-white to-amber-50/40 p-4">
+        <Card className="w-full max-w-lg overflow-hidden border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-amber-50/50 shadow-2xl shadow-slate-200/80">
+          <div className="h-1.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-amber-400" />
           <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-              <Mic className="w-8 h-8 text-slate-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-700 to-cyan-600 text-white shadow-lg shadow-blue-200">
+              <Mic className="h-8 w-8" />
             </div>
-            <h2 className="text-2xl font-medium text-slate-800 mb-2">Mock Interview</h2>
-            <p className="text-slate-500 mb-6">
+            <h2 className="mb-2 text-2xl font-extrabold text-slate-950">Mock Interview</h2>
+            <p className="mb-6 font-medium text-slate-700">
               Practice with a simulated interview experience. Questions will be presented
               one at a time, with follow-up questions based on your responses.
             </p>
-            <div className="space-y-2 text-sm text-slate-500 mb-6">
-              <p>- No scoring or grades</p>
-              <p>- Practice at your own pace</p>
-              <p>- Review suggested responses</p>
+            <div className="mb-6 grid gap-2 text-sm font-bold text-blue-900">
+              <p className="rounded-full bg-white/85 px-3 py-2 shadow-sm ring-1 ring-blue-100">No scoring or grades</p>
+              <p className="rounded-full bg-white/85 px-3 py-2 shadow-sm ring-1 ring-blue-100">Practice at your own pace</p>
+              <p className="rounded-full bg-white/85 px-3 py-2 shadow-sm ring-1 ring-blue-100">Review suggested responses</p>
             </div>
-            <Button onClick={startInterview} className="bg-slate-700 hover:bg-slate-800">
+            <Button onClick={startInterview} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold text-white shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
               Start Mock Interview
             </Button>
           </CardContent>
@@ -176,12 +177,13 @@ export function MockInterview({ onBack }: MockInterviewProps) {
     const practicedCount = Math.max(answeredQuestions.length, Math.min(queueIndex + 1, questionQueue.length));
 
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-4">
-        <Card className="max-w-lg w-full">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50/70 via-white to-blue-50/40 p-4">
+        <Card className="w-full max-w-lg overflow-hidden border-2 border-emerald-100 bg-gradient-to-br from-white via-emerald-50/60 to-blue-50/50 shadow-2xl shadow-slate-200/80">
+          <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600" />
           <CardContent className="p-8 text-center">
-            <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-medium text-slate-800 mb-2">Practice Complete</h2>
-            <p className="text-slate-500 mb-6">
+            <CheckCircle className="mx-auto mb-4 h-16 w-16 text-emerald-600" />
+            <h2 className="mb-2 text-2xl font-extrabold text-slate-950">Practice Complete</h2>
+            <p className="mb-6 font-medium text-slate-700">
               You practiced {practicedCount} questions.
               Great work preparing for your interview!
             </p>
@@ -190,7 +192,7 @@ export function MockInterview({ onBack }: MockInterviewProps) {
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Practice More
               </Button>
-              <Button onClick={onBack} className="bg-slate-700 hover:bg-slate-800">
+              <Button onClick={onBack} className="bg-gradient-to-r from-emerald-600 to-cyan-600 font-bold hover:from-emerald-700 hover:to-cyan-700">
                 Back to Dashboard
               </Button>
             </div>
@@ -208,41 +210,42 @@ export function MockInterview({ onBack }: MockInterviewProps) {
   if (!activeQuestion || !currentTopic) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
-      <div className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-white to-amber-50/40">
+      <div className="sticky top-0 z-10 border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/60 backdrop-blur">
+        <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6">
           <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={onBack}>
+            <Button variant="ghost" size="sm" onClick={onBack} className="font-bold text-blue-800 hover:bg-blue-50 hover:text-blue-950">
               <ArrowLeft className="w-4 h-4 mr-1" />
               Exit
             </Button>
-            <div className="flex items-center gap-2">
-              <Mic className="w-4 h-4 text-slate-500" />
-              <span className="text-sm text-slate-500">Mock Interview</span>
+            <div className="flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-blue-800 ring-1 ring-blue-100">
+              <Mic className="w-4 h-4" />
+              <span className="text-sm font-extrabold">Mock Interview</span>
             </div>
           </div>
         </div>
       </div>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <div className="space-y-6">
-          <Card className="border-slate-200/60">
-            <CardContent className="p-6">
+          <Card className="overflow-hidden border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/50 to-amber-50/40 shadow-xl shadow-slate-200/80">
+            <div className="h-1.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-amber-400" />
+            <CardContent className="p-6 sm:p-8">
               {isFollowUp && (
-                <Badge variant="secondary" className="mb-4">
+                <Badge className="mb-4 border-0 bg-amber-500 px-3 py-1 font-extrabold text-white shadow-sm shadow-amber-200">
                   Follow-up Question
                 </Badge>
               )}
 
               <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                  <MessageSquare className="w-5 h-5 text-slate-500" />
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-200">
+                  <MessageSquare className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-xl text-slate-800 leading-relaxed">
+                  <h3 className="text-xl font-semibold leading-relaxed text-slate-950 sm:text-2xl">
                     {activeQuestion.prompt}
                   </h3>
-                  <p className="text-sm text-slate-400 mt-2">{currentTopic.title}</p>
+                  <p className="mt-2 text-sm font-bold text-blue-800">{currentTopic.title}</p>
                 </div>
               </div>
 
@@ -250,19 +253,19 @@ export function MockInterview({ onBack }: MockInterviewProps) {
                 <Button
                   onClick={() => setShowAnswer(true)}
                   variant="outline"
-                  className="w-full mt-6 py-6 border-dashed border-2"
+                  className="mt-6 w-full border-0 bg-gradient-to-r from-blue-600 to-cyan-600 py-6 font-bold text-white shadow-lg shadow-blue-200 hover:from-blue-700 hover:to-cyan-700 hover:text-white"
                 >
                   View Suggested Response
                 </Button>
               )}
 
               {showAnswer && activeQuestion.sampleAnswer && (
-                <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="mt-6 rounded-xl border-2 border-blue-100 bg-white/90 p-5 shadow-inner">
                   <div className="flex items-center gap-2 mb-3">
-                    <Lightbulb className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm text-slate-500">One way to respond</span>
+                    <Lightbulb className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-extrabold text-blue-900">One way to respond</span>
                   </div>
-                  <p className="text-slate-700 leading-relaxed">
+                  <p className="font-medium leading-relaxed text-slate-950">
                     {activeQuestion.sampleAnswer}
                   </p>
                 </div>
@@ -275,7 +278,7 @@ export function MockInterview({ onBack }: MockInterviewProps) {
               <Button
                 variant="outline"
                 onClick={showRelatedQuestion}
-                className="flex-1"
+                className="flex-1 border-amber-300 bg-white font-bold text-amber-800 shadow-sm hover:border-amber-500 hover:bg-amber-50"
               >
                 Practice Follow-up
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -283,13 +286,13 @@ export function MockInterview({ onBack }: MockInterviewProps) {
             )}
             <Button
               onClick={handleNextQuestion}
-              className="flex-1 bg-slate-700 hover:bg-slate-800"
+              className="flex-1 bg-gradient-to-r from-blue-700 to-cyan-700 font-bold text-white shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800"
             >
               {isFollowUp ? 'Next Question' : 'Skip to Next'}
             </Button>
           </div>
 
-          <p className="text-center text-sm text-slate-400">
+          <p className="text-center text-sm font-bold text-blue-800">
             Question {currentNumber} of {totalQuestions} - Practice at your own pace
           </p>
         </div>
