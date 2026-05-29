@@ -545,7 +545,7 @@ function Navigation({ navigate }: { navigate: (page: Page) => void }) {
                 {link.label}
               </button>
             ))}
-            <Button onClick={() => scrollToSection('topics')} size="sm" className="ml-2 bg-slate-700 hover:bg-slate-800 text-white font-normal">
+            <Button onClick={() => scrollToSection('topics')} size="sm" className="hero-study-cta ml-2">
               Begin studying
             </Button>
           </div>
@@ -570,7 +570,7 @@ function Navigation({ navigate }: { navigate: (page: Page) => void }) {
                 </button>
               ))}
               <div className="pt-2 px-4">
-                <Button onClick={() => scrollToSection('topics')} className="w-full bg-slate-700 hover:bg-slate-800 font-normal">
+                <Button onClick={() => scrollToSection('topics')} className="hero-study-cta w-full">
                   Begin studying
                 </Button>
               </div>
@@ -671,26 +671,26 @@ function StudyProgressSection({
   const percentage = getProgressPercentage();
 
   return (
-    <section id="progress" className="py-16 bg-white">
+    <section id="progress" className="app-vivid-section py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <h2 className="text-2xl sm:text-3xl text-slate-800 mb-4 font-medium">Track Your USCIS Interview Preparation</h2>
-          <p className="text-slate-500 max-w-2xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl text-slate-950 mb-4 font-extrabold">Track Your USCIS Interview Preparation</h2>
+          <p className="text-slate-700 max-w-2xl mx-auto font-semibold">
             Monitor your progress through marriage green card interview questions and see how prepared you are for your USCIS interview.
           </p>
         </div>
 
-        <Card className="max-w-3xl mx-auto">
+        <Card className="max-w-3xl mx-auto border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/90 to-amber-50/70 shadow-xl shadow-blue-100/70">
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-blue-600" />
-                  Progress Overview
+                  <span className="text-slate-950">Progress Overview</span>
                 </CardTitle>
                 <CardDescription>{reviewedTopics.length} of {topics.length} topics reviewed</CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={resetProgress} className="text-slate-500 font-semibold">
+              <Button variant="outline" size="sm" onClick={resetProgress} className="font-extrabold text-blue-800">
                 <RotateCcw className="mr-1 h-4 w-4" />
                 Reset
               </Button>
@@ -699,15 +699,15 @@ function StudyProgressSection({
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600 font-medium">Overall Progress</span>
-                <span className="font-bold text-slate-900">{percentage}%</span>
+                <span className="font-bold text-slate-700">Overall Progress</span>
+                <span className="font-extrabold text-blue-800">{percentage}%</span>
               </div>
               <Progress value={percentage} className="h-3" />
             </div>
 
             {reviewedTopics.length > 0 && (
               <div>
-                <h4 className="text-sm font-bold text-slate-700 mb-3">Reviewed Topics:</h4>
+                <h4 className="text-sm font-extrabold text-slate-900 mb-3">Reviewed Topics:</h4>
                 <div className="flex flex-wrap gap-2">
                   {reviewedTopics.map(topicId => {
                     const topic = topics.find(t => t.id === topicId);
@@ -733,7 +733,7 @@ function StudyProgressSection({
                 <Button 
                   variant="outline" 
                   onClick={onViewDashboard}
-                  className="flex-1 sm:flex-none border-slate-200 text-slate-600 font-normal"
+                  className="flex-1 sm:flex-none font-extrabold"
                 >
                   <TrendingUp className="w-4 h-4 mr-2" />
                   View detailed stats
@@ -743,7 +743,7 @@ function StudyProgressSection({
                 <Button 
                   variant="outline" 
                   onClick={onViewSaved}
-                  className="flex-1 sm:flex-none border-slate-200 text-slate-600 font-normal"
+                  className="flex-1 sm:flex-none font-extrabold"
                 >
                   <Bookmark className="w-4 h-4 mr-2" />
                   Saved questions
@@ -1103,24 +1103,24 @@ function TimelineBuilderSection() {
   const filledCount = milestones.filter(m => m.date && m.location).length;
 
   return (
-    <section id="timeline" className="py-20 bg-white">
+    <section id="timeline" className="app-vivid-section py-20">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold text-slate-900 mb-4">Relationship Timeline Builder</h2>
-          <p className="text-slate-600 max-w-2xl mx-auto">
+          <h2 className="text-3xl font-extrabold text-slate-950 mb-4">Relationship Timeline Builder</h2>
+          <p className="text-slate-700 max-w-2xl mx-auto font-semibold">
             Document your relationship milestones. Having a clear timeline helps ensure you and your partner give consistent answers.
           </p>
         </div>
 
-        <Card className="mb-6 border-2 border-slate-200 shadow-lg">
-          <CardHeader className="bg-slate-50 border-b border-slate-200">
+        <Card className="mb-6 border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/80 to-emerald-50/60 shadow-xl shadow-blue-100/70">
+          <CardHeader className="border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
-                <CardTitle className="flex items-center gap-2 text-slate-900">
+                <CardTitle className="flex items-center gap-2 text-slate-950">
                   <Calendar className="h-5 w-5 text-blue-600" />
                   Your Timeline
                 </CardTitle>
-                <CardDescription className="font-medium">{filledCount} of {milestones.length} milestones documented</CardDescription>
+                <CardDescription className="font-bold text-slate-700">{filledCount} of {milestones.length} milestones documented</CardDescription>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)} className="font-semibold border-slate-300">
@@ -1136,9 +1136,9 @@ function TimelineBuilderSection() {
             {!showPreview ? (
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                 {milestones.map((milestone) => (
-                  <div key={milestone.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 bg-white border-2 border-slate-200 rounded-lg hover:border-blue-300 transition-colors shadow-sm">
+                  <div key={milestone.id} className="app-vivid-tile grid grid-cols-1 sm:grid-cols-12 gap-3 rounded-lg p-4 transition-colors hover:border-blue-300">
                     <div className="sm:col-span-3">
-                      <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Milestone</Label>
+                      <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Milestone</Label>
                       <Input 
                         value={milestone.title} 
                         onChange={(e) => updateMilestone(milestone.id, 'title', e.target.value)} 
@@ -1146,7 +1146,7 @@ function TimelineBuilderSection() {
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Date</Label>
+                      <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Date</Label>
                       <Input 
                         type="date" 
                         value={milestone.date} 
@@ -1155,7 +1155,7 @@ function TimelineBuilderSection() {
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Location</Label>
+                      <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Location</Label>
                       <Input 
                         value={milestone.location} 
                         onChange={(e) => updateMilestone(milestone.id, 'location', e.target.value)} 
@@ -1164,11 +1164,11 @@ function TimelineBuilderSection() {
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <Label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Notes</Label>
+                      <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Notes</Label>
                       <button
                         type="button"
                         onClick={() => setEditingMilestone({ ...milestone })}
-                        className="mt-1 flex min-h-10 w-full items-center justify-between gap-3 rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-left font-semibold text-slate-900 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        className="mt-1 flex min-h-10 w-full items-center justify-between gap-3 rounded-md border-2 border-blue-200 bg-white px-3 py-2 text-left font-extrabold text-slate-950 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50/60 focus:outline-none focus:ring-2 focus:ring-blue-200"
                       >
                         <span className={milestone.notes ? 'line-clamp-1' : 'text-slate-500'}>
                           {milestone.notes || 'Open full notes editor'}
@@ -1191,7 +1191,7 @@ function TimelineBuilderSection() {
                 ))}
               </div>
             ) : (
-              <div className="bg-slate-50 rounded-lg p-6 border-2 border-slate-200">
+              <div className="app-vivid-panel rounded-lg p-6">
                 <h3 className="font-bold text-slate-900 mb-4 text-center text-lg">Your Relationship Timeline</h3>
                 <div className="space-y-4">
                   {milestones.filter(m => m.date).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((milestone, index) => (
@@ -1333,11 +1333,11 @@ function PrintableChecklistSection() {
   ];
 
   return (
-    <section id="checklist" className="py-20 bg-slate-50">
+    <section id="checklist" className="app-vivid-section py-20">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold text-slate-900 mb-4">Last-Minute Review Checklist</h2>
-          <p className="text-slate-600 max-w-2xl mx-auto">
+          <h2 className="text-3xl font-extrabold text-slate-950 mb-4">Last-Minute Review Checklist</h2>
+          <p className="text-slate-700 max-w-2xl mx-auto font-semibold">
             A printable summary of the most important topics to review before your interview.
           </p>
         </div>
@@ -1349,10 +1349,10 @@ function PrintableChecklistSection() {
           </Button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border-2 border-slate-200 p-6 sm:p-8 print:shadow-none print:border-0">
+        <div className="app-vivid-panel rounded-xl p-6 sm:p-8 print:shadow-none print:border-0">
           <div className="text-center mb-8 border-b pb-6">
-            <h1 className="text-2xl font-bold text-slate-900">Interview Preparation Checklist</h1>
-            <p className="text-slate-600 mt-2 font-medium">Review these key topics with your partner before your interview</p>
+            <h1 className="text-2xl font-extrabold text-slate-950">Interview Preparation Checklist</h1>
+            <p className="text-slate-700 mt-2 font-bold">Review these key topics with your partner before your interview</p>
           </div>
 
           <div className="space-y-8">
@@ -1363,9 +1363,9 @@ function PrintableChecklistSection() {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {keyQuestions.map((q, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div key={i} className="app-vivid-tile flex items-start gap-3 rounded-lg p-3">
                     <Checkbox id={`q-${i}`} className="mt-0.5 border-2 border-slate-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 h-5 w-5 flex-shrink-0" />
-                    <Label htmlFor={`q-${i}`} className="text-sm cursor-pointer text-slate-700 font-medium">{q}</Label>
+                    <Label htmlFor={`q-${i}`} className="text-sm cursor-pointer text-slate-900 font-bold">{q}</Label>
                   </div>
                 ))}
               </div>
@@ -1380,9 +1380,9 @@ function PrintableChecklistSection() {
                 {essentialTopics.map(topic => {
                   const Icon = getIcon(topic.icon);
                   return (
-                    <div key={topic.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div key={topic.id} className="app-vivid-tile flex items-center gap-3 rounded-lg p-3">
                       <Checkbox id={`topic-${topic.id}`} className="mt-0.5 border-2 border-slate-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 h-5 w-5 flex-shrink-0" />
-                      <Label htmlFor={`topic-${topic.id}`} className="text-sm cursor-pointer flex items-center gap-2 text-slate-700 font-medium">
+                      <Label htmlFor={`topic-${topic.id}`} className="text-sm cursor-pointer flex items-center gap-2 text-slate-900 font-bold">
                         <Icon className="h-4 w-4 text-slate-500" />
                         {topic.title}
                       </Label>
@@ -1399,9 +1399,9 @@ function PrintableChecklistSection() {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {['Marriage certificate', 'Photo ID / Passport', 'Joint bank statements', 'Lease or mortgage documents', 'Utility bills', 'Insurance cards', 'Tax returns (if applicable)', 'Photos together (organized by date)'].map((doc, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div key={i} className="app-vivid-tile flex items-center gap-3 rounded-lg p-3">
                     <Checkbox id={`doc-${i}`} className="mt-0.5 border-2 border-slate-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 h-5 w-5 flex-shrink-0" />
-                    <Label htmlFor={`doc-${i}`} className="text-sm cursor-pointer text-slate-700 font-medium">{doc}</Label>
+                    <Label htmlFor={`doc-${i}`} className="text-sm cursor-pointer text-slate-900 font-bold">{doc}</Label>
                   </div>
                 ))}
               </div>

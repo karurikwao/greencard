@@ -22,12 +22,39 @@ function slugify(value: string) {
     .slice(0, 50);
 }
 
+const seoCardAccents = [
+  {
+    shell: 'border-blue-200 bg-gradient-to-br from-white via-blue-50/90 to-cyan-50/80 hover:border-blue-400 hover:shadow-blue-200/80',
+    icon: 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-blue-200',
+    badge: 'bg-blue-100 text-blue-900',
+    link: 'text-blue-800 hover:text-blue-950',
+  },
+  {
+    shell: 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50/90 to-teal-50/80 hover:border-emerald-400 hover:shadow-emerald-200/80',
+    icon: 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white shadow-emerald-200',
+    badge: 'bg-emerald-100 text-emerald-900',
+    link: 'text-emerald-800 hover:text-emerald-950',
+  },
+  {
+    shell: 'border-amber-200 bg-gradient-to-br from-white via-amber-50/90 to-orange-50/80 hover:border-amber-400 hover:shadow-amber-200/80',
+    icon: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-amber-200',
+    badge: 'bg-amber-100 text-amber-900',
+    link: 'text-amber-800 hover:text-amber-950',
+  },
+  {
+    shell: 'border-rose-200 bg-gradient-to-br from-white via-rose-50/90 to-pink-50/80 hover:border-rose-400 hover:shadow-rose-200/80',
+    icon: 'bg-gradient-to-br from-rose-600 to-pink-500 text-white shadow-rose-200',
+    badge: 'bg-rose-100 text-rose-900',
+    link: 'text-rose-800 hover:text-rose-950',
+  },
+];
+
 function PageShell({ title, description, onBack, children }: PageShellProps) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200">
+    <div className="min-h-screen app-vivid-section">
+      <header className="border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/70 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+          <Button variant="ghost" size="sm" onClick={onBack} className="font-bold text-blue-800 hover:bg-blue-50 hover:text-blue-950">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
@@ -36,9 +63,9 @@ function PageShell({ title, description, onBack, children }: PageShellProps) {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
         <div className="max-w-3xl mb-8">
-          <Badge className="mb-3 bg-blue-100 text-blue-700 hover:bg-blue-100">USCIS Interview Prep</Badge>
-          <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">{title}</h1>
-          <p className="mt-4 text-slate-600 leading-relaxed">{description}</p>
+          <Badge className="mb-3 border-0 bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-900 hover:from-blue-100 hover:to-cyan-100">USCIS Interview Prep</Badge>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-950 leading-tight">{title}</h1>
+          <p className="mt-4 font-semibold text-slate-700 leading-relaxed">{description}</p>
         </div>
         {children}
       </main>
@@ -53,13 +80,13 @@ function QuestionList({ topic, limit = 6 }: { topic: Topic; limit?: number }) {
         <a
           key={qa.question}
           href={`/questions/${slugify(qa.question)}`}
-          className="block rounded-lg border border-slate-200 bg-white p-4 hover:border-blue-300 hover:shadow-sm transition"
+          className="app-vivid-tile block rounded-lg p-4 transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"
         >
           <div className="flex items-start justify-between gap-3">
-            <p className="font-medium text-slate-800">{qa.question}</p>
-            <ArrowRight className="w-4 h-4 text-slate-400 mt-1 flex-shrink-0" />
+            <p className="font-extrabold text-slate-950">{qa.question}</p>
+            <ArrowRight className="w-4 h-4 text-blue-700 mt-1 flex-shrink-0" />
           </div>
-          {qa.tip && <p className="text-sm text-slate-500 mt-2">{qa.tip}</p>}
+          {qa.tip && <p className="text-sm font-semibold text-slate-700 mt-2">{qa.tip}</p>}
         </a>
       ))}
     </div>
@@ -202,20 +229,27 @@ export function InterviewTopicsPage({ onBack }: { onBack: () => void }) {
       onBack={onBack}
     >
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {topics.map((topic) => (
-          <Card key={topic.id} className="border-slate-200">
+        {topics.map((topic, index) => {
+          const accent = seoCardAccents[index % seoCardAccents.length];
+          return (
+          <Card key={topic.id} className={`group overflow-hidden border-2 shadow-lg transition-all hover:-translate-y-1 hover:shadow-xl ${accent.shell}`}>
+            <div className={`h-1.5 bg-gradient-to-r ${index % 4 === 0 ? 'from-blue-600 to-cyan-500' : index % 4 === 1 ? 'from-emerald-600 to-teal-500' : index % 4 === 2 ? 'from-amber-500 to-orange-500' : 'from-rose-600 to-pink-500'}`} />
             <CardHeader>
-              <CardTitle className="text-lg">{topic.title}</CardTitle>
-              <CardDescription>{topic.description}</CardDescription>
+              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-xl shadow-lg ${accent.icon}`}>
+                <BookOpen className="h-5 w-5" />
+              </div>
+              <CardTitle className="text-lg leading-snug text-slate-950">{topic.title}</CardTitle>
+              <CardDescription className="font-semibold text-slate-700">{topic.description}</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-between">
-              <Badge variant="secondary">{topic.questionCount} questions</Badge>
-              <a href={`/topics/${topic.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-700">
+              <Badge className={`border-0 font-extrabold ${accent.badge}`}>{topic.questionCount} questions</Badge>
+              <a href={`/topics/${topic.id}`} className={`text-sm font-extrabold ${accent.link}`}>
                 Open
               </a>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </PageShell>
   );
@@ -237,7 +271,7 @@ export function TopicHubPage({ topicSlug, onBack }: { topicSlug: string; onBack:
   return (
     <PageShell title={topic.title} description={topic.description} onBack={onBack}>
       <div className="grid lg:grid-cols-[1fr_340px] gap-6">
-        <Card className="border-slate-200">
+        <Card className="border-blue-200 bg-gradient-to-br from-white via-blue-50/90 to-cyan-50/70 shadow-xl shadow-blue-100/80">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-blue-500" />
@@ -250,7 +284,7 @@ export function TopicHubPage({ topicSlug, onBack }: { topicSlug: string; onBack:
         </Card>
 
         <div className="space-y-5">
-          <Card className="border-slate-200">
+          <Card className="border-emerald-200 bg-gradient-to-br from-white via-emerald-50/90 to-teal-50/70 shadow-xl shadow-emerald-100/80">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -260,7 +294,7 @@ export function TopicHubPage({ topicSlug, onBack }: { topicSlug: string; onBack:
             <CardContent>
               <ul className="space-y-3">
                 {topic.checklist.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                  <li key={item} className="flex items-start gap-2 text-sm font-semibold text-slate-900">
                     <CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
                     {item}
                   </li>
@@ -269,7 +303,7 @@ export function TopicHubPage({ topicSlug, onBack }: { topicSlug: string; onBack:
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200">
+          <Card className="border-amber-200 bg-gradient-to-br from-white via-amber-50/90 to-orange-50/70 shadow-xl shadow-amber-100/80">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Lightbulb className="w-5 h-5 text-amber-500" />
@@ -279,8 +313,8 @@ export function TopicHubPage({ topicSlug, onBack }: { topicSlug: string; onBack:
             <CardContent className="space-y-4">
               {topic.sampleQA.slice(0, 2).map((qa) => (
                 <div key={qa.question}>
-                  <p className="text-sm font-medium text-slate-800">{qa.question}</p>
-                  <p className="text-sm text-slate-600 mt-1">{qa.sampleAnswer}</p>
+                  <p className="text-sm font-extrabold text-slate-950">{qa.question}</p>
+                  <p className="text-sm font-semibold text-slate-700 mt-1">{qa.sampleAnswer}</p>
                 </div>
               ))}
             </CardContent>

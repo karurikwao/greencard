@@ -5,10 +5,10 @@
 @layer base {
   :root {
     /* Calm, professional color palette */
-    --background: 210 20% 98%;
-    --foreground: 222 24% 12%;
+    --background: 210 38% 97%;
+    --foreground: 222 54% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222 24% 12%;
+    --card-foreground: 222 54% 9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 24% 12%;
     /* Muted blue primary - trustworthy, calm */
@@ -17,7 +17,7 @@
     --secondary: 210 15% 95%;
     --secondary-foreground: 222 20% 18%;
     --muted: 210 15% 95%;
-    --muted-foreground: 220 16% 32%;
+    --muted-foreground: 218 34% 24%;
     --accent: 210 30% 96%;
     --accent-foreground: 211 55% 28%;
     /* Softer destructive */
@@ -98,13 +98,26 @@
 
 body .text-muted-foreground:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *),
 body .text-slate-500:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *) {
-  color: #475569;
+  color: #274160;
 }
 
 body .text-slate-400:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *) {
-  color: #64748b;
+  color: #516987;
+}
+
+body .text-slate-600:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *) {
+  color: #173153;
+}
+
+body .text-slate-700:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *) {
+  color: #0b2342;
+}
+
+body .text-slate-800:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *),
+body .text-slate-900:not(footer):not(footer *):not(.bg-slate-900):not(.bg-slate-900 *) {
+  color: #06162f;
 }
 
 body .placeholder\:text-muted-foreground::placeholder {
-  color: #64748b;
+  color: #516987;
 }

@@ -92,49 +92,51 @@ export function ProgressDashboard({ onBack, onPracticeTopic }: ProgressDashboard
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
-        <p className="text-slate-500">Loading your progress...</p>
+      <div className="min-h-screen app-vivid-section flex items-center justify-center">
+        <p className="font-bold text-slate-700">Loading your progress...</p>
       </div>
     );
   }
 
   if (!stats || !percentages) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex items-center justify-center">
-        <p className="text-slate-500">Unable to load statistics</p>
+      <div className="min-h-screen app-vivid-section flex items-center justify-center">
+        <p className="font-bold text-slate-700">Unable to load statistics</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen app-vivid-section">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200/60 sticky top-0 z-10">
+      <div className="sticky top-0 z-10 border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/70 backdrop-blur">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4">
           <Button
             variant="ghost"
             size="sm"
             onClick={onBack}
-            className="mb-4 -ml-2 text-slate-500 hover:text-slate-800 font-normal"
+            className="mb-4 -ml-2 font-bold text-blue-800 hover:bg-blue-50 hover:text-blue-950"
           >
             <ArrowLeft className="w-4 h-4 mr-1.5" />
             Back
           </Button>
 
           <div className="flex items-center gap-3">
-            <TrendingUp className="w-6 h-6 text-slate-400" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-700 to-cyan-500 text-white shadow-lg shadow-blue-200">
+              <TrendingUp className="w-5 h-5" />
+            </div>
             <div>
-              <h1 className="text-2xl text-slate-800 font-medium">
+              <h1 className="text-2xl font-extrabold text-slate-950">
                 Your Progress
               </h1>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm font-semibold text-slate-700 mt-1">
                 Track your preparation journey
               </p>
             </div>
           </div>
 
           {isSyncing && (
-            <p className="text-xs text-slate-400 mt-2">Syncing...</p>
+            <p className="text-xs font-bold text-blue-700 mt-2">Syncing...</p>
           )}
         </div>
       </div>
@@ -173,25 +175,25 @@ export function ProgressDashboard({ onBack, onPracticeTopic }: ProgressDashboard
         </div>
 
         {/* Overall Progress */}
-        <Card className="border-slate-200/60 shadow-sm mb-8">
+        <Card className="mb-8 border-blue-200 shadow-xl shadow-blue-100/70">
           <CardHeader>
-            <CardTitle className="text-base font-medium text-slate-700">
+            <CardTitle className="text-base font-extrabold text-slate-950">
               Overall Progress
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Questions reviewed</span>
-                <span className="text-slate-800 font-medium">{percentages.reviewed}%</span>
+                <span className="font-bold text-slate-700">Questions reviewed</span>
+                <span className="font-extrabold text-blue-800">{percentages.reviewed}%</span>
               </div>
               <Progress value={percentages.reviewed} className="h-2" />
             </div>
             
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Topics started</span>
-                <span className="text-slate-800 font-medium">{stats.topicsStarted} of {normalizedTopics.length}</span>
+                <span className="font-bold text-slate-700">Topics started</span>
+                <span className="font-extrabold text-emerald-800">{stats.topicsStarted} of {normalizedTopics.length}</span>
               </div>
               <Progress 
                 value={(stats.topicsStarted / normalizedTopics.length) * 100} 
@@ -203,9 +205,9 @@ export function ProgressDashboard({ onBack, onPracticeTopic }: ProgressDashboard
 
         {/* Topics Needing Attention */}
         {topicsNeedingAttention.length > 0 && (
-          <Card className="border-slate-200/60 shadow-sm mb-8">
+          <Card className="mb-8 border-amber-200 shadow-xl shadow-amber-100/70">
             <CardHeader>
-              <CardTitle className="text-base font-medium text-slate-700">
+              <CardTitle className="text-base font-extrabold text-slate-950">
                 Topics to review
               </CardTitle>
             </CardHeader>
@@ -214,14 +216,14 @@ export function ProgressDashboard({ onBack, onPracticeTopic }: ProgressDashboard
                 {topicsNeedingAttention.map(({ topic, count }) => (
                   <div 
                     key={topic.id}
-                    className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg"
+                    className="app-vivid-tile flex items-center justify-between rounded-lg p-3"
                   >
                     <div className="flex items-center gap-3">
                       <AlertCircle className="w-4 h-4 text-amber-500" />
-                      <span className="text-slate-700">{topic.title}</span>
+                      <span className="font-bold text-slate-900">{topic.title}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-slate-500">
+                      <span className="text-sm font-semibold text-amber-800">
                         {count} questions need review
                       </span>
                       <Button
@@ -241,9 +243,9 @@ export function ProgressDashboard({ onBack, onPracticeTopic }: ProgressDashboard
         )}
 
         {/* Comfort Level Breakdown */}
-        <Card className="border-slate-200/60 shadow-sm">
+        <Card className="border-emerald-200 shadow-xl shadow-emerald-100/70">
           <CardHeader>
-            <CardTitle className="text-base font-medium text-slate-700">
+            <CardTitle className="text-base font-extrabold text-slate-950">
               Comfort level breakdown
             </CardTitle>
           </CardHeader>
@@ -292,32 +294,39 @@ interface StatCardProps {
 
 function StatCard({ icon: Icon, label, value, subValue, percentage, color }: StatCardProps) {
   const colorClasses = {
-    slate: 'bg-slate-100 text-slate-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    blue: 'bg-blue-50 text-blue-600',
-    rose: 'bg-rose-50 text-rose-600',
+    slate: 'bg-gradient-to-br from-blue-100 to-slate-100 text-blue-800',
+    emerald: 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-800',
+    amber: 'bg-gradient-to-br from-amber-100 to-orange-100 text-amber-800',
+    blue: 'bg-gradient-to-br from-blue-100 to-cyan-100 text-blue-800',
+    rose: 'bg-gradient-to-br from-rose-100 to-pink-100 text-rose-800',
+  };
+  const cardShellClasses = {
+    slate: 'border-blue-200 bg-gradient-to-br from-white via-blue-50/90 to-slate-50 shadow-blue-100/80',
+    emerald: 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50/90 to-teal-50 shadow-emerald-100/80',
+    amber: 'border-amber-200 bg-gradient-to-br from-white via-amber-50/90 to-orange-50 shadow-amber-100/80',
+    blue: 'border-blue-200 bg-gradient-to-br from-white via-blue-50/90 to-cyan-50 shadow-blue-100/80',
+    rose: 'border-rose-200 bg-gradient-to-br from-white via-rose-50/90 to-pink-50 shadow-rose-100/80',
   };
 
   return (
-    <Card className="border-slate-200/60 shadow-sm">
+    <Card className={cn('min-h-[176px] border-2 shadow-xl', cardShellClasses[color])}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
-          <div className={cn('p-2 rounded-md', colorClasses[color])}>
+          <div className={cn('p-2.5 rounded-xl shadow-sm', colorClasses[color])}>
             <Icon className="w-4 h-4" />
           </div>
           {percentage !== undefined && (
-            <span className="text-xs text-slate-400">{percentage}%</span>
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-extrabold text-slate-700 shadow-sm">{percentage}%</span>
           )}
         </div>
         <div className="mt-3">
-          <div className="text-2xl text-slate-800 font-medium">
+          <div className="text-3xl font-extrabold text-slate-950">
             {value}
             {subValue && (
-              <span className="text-sm text-slate-400 font-normal ml-1">{subValue}</span>
+              <span className="text-sm font-bold text-slate-600 ml-1">{subValue}</span>
             )}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+          <div className="text-xs font-extrabold uppercase tracking-wide text-slate-700 mt-1">{label}</div>
         </div>
       </CardContent>
     </Card>
@@ -335,10 +344,10 @@ function ComfortBar({ label, count, percentage, color }: ComfortBarProps) {
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="text-slate-800">{count}</span>
+        <span className="font-bold text-slate-700">{label}</span>
+        <span className="font-extrabold text-slate-950">{count}</span>
       </div>
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-2.5 overflow-hidden rounded-full bg-white/80 shadow-inner ring-1 ring-blue-100">
         <div 
           className={cn('h-full rounded-full transition-all duration-500', color)}
           style={{ width: `${percentage}%` }}
