@@ -566,7 +566,15 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   if (!isAuthenticated || !isAdmin) {
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md relative">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close admin login"
+          >
+            <X className="h-5 w-5" />
+          </button>
           <CardHeader className="text-center">
             <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
               <Lock className="h-6 w-6 text-blue-600" />
@@ -577,6 +585,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+              This panel is only for existing admin users. To create a regular user account, close this panel and use Create free account on the homepage.
+            </div>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

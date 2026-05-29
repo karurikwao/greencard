@@ -59,6 +59,8 @@ import {
   Play,
   Bookmark,
   ChevronRight,
+  LogIn,
+  UserPlus,
   // BookmarkCheck - available for future use
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -494,7 +496,15 @@ function getTopicAccent(topicId: string) {
 
 // ==================== COMPONENTS ====================
 
-function Navigation({ navigate }: { navigate: (page: Page) => void }) {
+function Navigation({
+  navigate,
+  isAuthenticated,
+  onAuthClick,
+}: {
+  navigate: (page: Page) => void;
+  isAuthenticated: boolean;
+  onAuthClick: (tab: 'login' | 'signup') => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -548,6 +558,44 @@ function Navigation({ navigate }: { navigate: (page: Page) => void }) {
             <Button onClick={() => scrollToSection('topics')} size="sm" className="hero-study-cta ml-2">
               Begin studying
             </Button>
+            {isAuthenticated ? (
+              <Button
+                onClick={() => navigate('dashboard')}
+                size="sm"
+                variant="outline"
+                className={`font-extrabold ${
+                  scrolled
+                    ? 'border-blue-200 bg-blue-50 text-blue-900 hover:bg-blue-100'
+                    : 'border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                Dashboard
+              </Button>
+            ) : (
+              <>
+                <Button
+                  onClick={() => onAuthClick('login')}
+                  size="sm"
+                  variant="outline"
+                  className={`font-extrabold ${
+                    scrolled
+                      ? 'border-blue-200 bg-white text-blue-900 hover:bg-blue-50'
+                      : 'border-white/50 bg-white/10 text-white hover:bg-white/20 hover:text-white'
+                  }`}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Sign in
+                </Button>
+                <Button
+                  onClick={() => onAuthClick('signup')}
+                  size="sm"
+                  className="bg-gradient-to-r from-emerald-600 to-cyan-600 font-extrabold text-white shadow-lg shadow-emerald-900/20 hover:from-emerald-700 hover:to-cyan-700"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Free account
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -574,6 +622,24 @@ function Navigation({ navigate }: { navigate: (page: Page) => void }) {
                   Begin studying
                 </Button>
               </div>
+              {isAuthenticated ? (
+                <div className="px-4">
+                  <Button onClick={() => { setIsOpen(false); navigate('dashboard'); }} variant="outline" className="w-full font-extrabold">
+                    Dashboard
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 px-4">
+                  <Button onClick={() => { setIsOpen(false); onAuthClick('signup'); }} className="w-full bg-gradient-to-r from-emerald-600 to-cyan-600 font-extrabold text-white">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Create free account
+                  </Button>
+                  <Button onClick={() => { setIsOpen(false); onAuthClick('login'); }} variant="outline" className="w-full font-extrabold">
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Sign in
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -582,7 +648,7 @@ function Navigation({ navigate }: { navigate: (page: Page) => void }) {
   );
 }
 
-function Hero() {
+function Hero({ onSignupClick }: { onSignupClick: () => void }) {
   const scrollToTopics = () => document.getElementById('topics')?.scrollIntoView({ behavior: 'smooth' });
 
   return (
@@ -617,6 +683,14 @@ function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 mb-12">
+            <Button 
+              onClick={onSignupClick}
+              size="lg" 
+              className="bg-gradient-to-r from-emerald-600 to-cyan-600 text-white px-8 shadow-lg shadow-emerald-900/20 hover:from-emerald-700 hover:to-cyan-700 transition-all font-extrabold"
+            >
+              <UserPlus className="mr-2 h-5 w-5" />
+              Create free account
+            </Button>
             <Button 
               onClick={scrollToTopics} 
               size="lg" 
@@ -1652,9 +1726,10 @@ function HomePage({
   navigate: (page: Page) => void;
   initialViewMode?: ViewMode;
 }) {
-  const { isAdmin, isSuperAdmin } = useOptionalAuth();
+  const { isAdmin, isSuperAdmin, isAuthenticated } = useOptionalAuth();
   const [showAdmin, setShowAdmin] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authDefaultTab, setAuthDefaultTab] = useState<'login' | 'signup'>('login');
   const [showPricingModal, setShowPricingModal] = useState(false);
   // Note: adminSettings and interstitial ad state removed - PDFs now use SecurePDFDownload
   
@@ -1753,6 +1828,11 @@ function HomePage({
       setViewMode('practice');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const openAuthModal = (tab: 'login' | 'signup') => {
+    setAuthDefaultTab(tab);
+    setShowAuthModal(true);
   };
 
   const adminOverlays = showAdmin ? (
@@ -1900,14 +1980,18 @@ function HomePage({
 
   return (
     <>
-      <Navigation navigate={navigate} />
+      <Navigation
+        navigate={navigate}
+        isAuthenticated={isAuthenticated}
+        onAuthClick={openAuthModal}
+      />
       
       {/* Global Announcement Banner */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
         <AnnouncementBanner placement="global.banner" />
       </div>
       
-      <Hero />
+      <Hero onSignupClick={() => openAuthModal('signup')} />
       
       {/* Home Hero Announcements */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1957,6 +2041,7 @@ function HomePage({
       <AuthModal 
         isOpen={showAuthModal} 
         onClose={() => setShowAuthModal(false)} 
+        defaultTab={authDefaultTab}
       />
 
       {/* Pricing Modal */}

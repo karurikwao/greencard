@@ -185,6 +185,7 @@ const { data, error } = await apiClient.auth.signUp(email, password, metadata);
 if (error) {
 return { error: new Error(error.message), data: { user: null } };
 }
+await loadSession();
 return { error: null, data: { user: data?.user ?? null } };
 };
 

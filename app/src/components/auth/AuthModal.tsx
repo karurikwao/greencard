@@ -77,6 +77,15 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     }
   }, []);
 
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(defaultTab);
+      setShowResetForm(false);
+      setError(null);
+      setSuccess(null);
+    }
+  }, [defaultTab, isOpen]);
+
   if (!isOpen) return null;
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -127,7 +136,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     if (error) {
       setError(error.message);
     } else {
-      setSuccess('Check your email to confirm your account!');
+      setSuccess('Account created. You are signed in and your progress can now sync across devices.');
       
       // Record referral event if user was created and has promo code
       if (data?.user && promoCode) {
@@ -194,12 +203,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
         <CardHeader>
           <CardTitle className="text-xl text-slate-800">
-            {showResetForm ? 'Reset Password' : 'Welcome'}
+            {showResetForm ? 'Reset Password' : activeTab === 'signup' ? 'Create your free account' : 'Welcome'}
           </CardTitle>
           <CardDescription>
             {showResetForm 
               ? 'Enter your email to receive reset instructions'
-              : 'Sign in to sync your progress across devices'
+              : activeTab === 'signup'
+                ? 'Save progress, use your dashboard, and keep practicing across devices'
+                : 'Sign in to sync your progress across devices'
             }
           </CardDescription>
         </CardHeader>
