@@ -834,3 +834,12 @@ textarea::placeholder {
   background: linear-gradient(90deg, #d97706, #ea580c, #be123c) !important;
   color: white !important;
 }
+
+.question-practice-cta h3,
+.question-practice-cta p {
+  color: white !important;
+}
+
+.question-practice-cta p {
+  opacity: 0.96;
+}
