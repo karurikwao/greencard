@@ -586,7 +586,7 @@ function Hero() {
   const scrollToTopics = () => document.getElementById('topics')?.scrollIntoView({ behavior: 'smooth' });
 
   return (
-    <section className="relative min-h-screen flex items-center overflow-hidden">
+    <section className="hero-section relative min-h-screen flex items-center overflow-hidden">
       {/* Background Image */}
       <div className="absolute inset-0">
         <img 
@@ -594,7 +594,7 @@ function Hero() {
           alt="Happy couple prepared for their interview" 
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-900/85 via-slate-900/70 to-transparent" />
+        <div className="hero-overlay absolute inset-0" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-24 pb-16">
@@ -603,9 +603,9 @@ function Hero() {
             Free Interview Practice Resources
           </Badge>
           
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+          <h1 className="hero-title text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white mb-6 leading-tight">
             Marriage Green Card Interview Questions &{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-rose-300">
+            <span className="hero-title-accent">
               Practice Tools
             </span>{' '}
             for Couples
