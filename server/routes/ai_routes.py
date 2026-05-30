@@ -5,6 +5,7 @@ import requests as http_requests
 from flask import Blueprint, request, jsonify
 from auth import optional_auth, require_auth, require_admin
 import db
+from admin_settings import saved_ai_runtime_config
 from support_service import (
     get_user_support_context,
     has_refund_signal,
@@ -35,7 +36,7 @@ def ai_interview_turn():
     user = request.current_user
     data = request.get_json() or {}
 
-    provider = data.get('provider', 'openai')
+    provider = data.get('provider') or _select_default_provider()
     model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
     topic_id = data.get('topicId')
     session_id = data.get('sessionId')
@@ -93,7 +94,7 @@ def ai_interview_turn():
 
 
 @ai_bp.route('/support-assist', methods=['POST'])
-@require_auth
+@optional_auth
 def support_assist():
     data = request.get_json() or {}
     category = (data.get('category') or 'other')[:40]
@@ -103,13 +104,7 @@ def support_assist():
     if not subject and not message:
         return jsonify({'error': 'Tell the assistant what you need help with first.'}), 400
 
-    provider = data.get('provider') or (
-        'nvidia' if NVIDIA_API_KEY else
-        'openai' if OPENAI_API_KEY else
-        'deepseek' if DEEPSEEK_API_KEY else
-        'anthropic' if ANTHROPIC_API_KEY else
-        'fallback'
-    )
+    provider = data.get('provider') or _select_default_provider()
     model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
     messages = _build_support_messages(category, subject, message)
 
@@ -158,13 +153,7 @@ def support_ticket_draft():
         ticket.get('message') or '',
         triage,
     )
-    provider = data.get('provider') or (
-        'nvidia' if NVIDIA_API_KEY else
-        'deepseek' if DEEPSEEK_API_KEY else
-        'anthropic' if ANTHROPIC_API_KEY else
-        'openai' if OPENAI_API_KEY else
-        'fallback'
-    )
+    provider = data.get('provider') or _select_default_provider()
     model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
     messages = _build_admin_support_messages(ticket, context, refund_signal)
 
@@ -219,7 +208,227 @@ def support_ticket_draft():
     return jsonify({'success': True, 'data': normalized})
 
 
+@ai_bp.route('/dashboard-agent', methods=['POST'])
+@require_auth
+def dashboard_agent():
+    user = request.current_user
+    data = request.get_json() or {}
+    question = str(data.get('question') or '').strip()
+
+    if len(question) < 3:
+        return jsonify({'error': 'Ask a question first.'}), 400
+    if len(question) > 1200:
+        return jsonify({'error': 'Please keep the question under 1,200 characters.'}), 400
+
+    provider = data.get('provider') or _select_default_provider()
+    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+
+    limits = _check_usage_limits(user)
+    if limits and not limits.get('allowed', False):
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'PLAN_LIMIT_REACHED',
+                'message': limits.get('reason', 'Usage limit reached'),
+                'userMessage': limits.get('reason', 'Usage limit reached. Upgrade for more AI help.'),
+                'upgradeRecommended': True,
+            },
+        }), 429
+
+    session_id = _record_session_start(user, provider, model, 'dashboard-agent')
+    recent_memory = _get_dashboard_agent_memory(user['id'], 6)
+    messages = _build_dashboard_agent_messages(question, recent_memory, data.get('context') or {})
+
+    try:
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+            provider,
+            model,
+            messages,
+        )
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': {
+                'code': 'PROVIDER_ERROR',
+                'message': f'AI provider error: {str(e)}',
+                'userMessage': 'Robin is temporarily unavailable. Please try again shortly.',
+            },
+        }), 500
+
+    answer = _normalize_dashboard_agent_answer(response_text)
+    tags = _extract_memory_tags(question, answer)
+    token_estimate = _estimate_token_count(question) + _estimate_token_count(answer)
+    saved = _record_dashboard_agent_memory(
+        user['id'],
+        question,
+        answer,
+        actual_provider,
+        actual_model,
+        tags,
+        {
+            'requestedProvider': provider,
+            'requestedModel': model,
+            'providerFallback': fallback_used,
+            'sessionId': str(session_id) if session_id else None,
+            'agentName': 'Robin',
+            'tokenEstimate': token_estimate,
+        },
+    )
+    _record_turn(user, session_id)
+
+    return jsonify({
+        'success': True,
+        'data': {
+            **_serialize_dashboard_memory(saved, question, answer, actual_provider, actual_model, tags),
+            'requestedProvider': provider,
+            'requestedModel': model,
+            'providerFallback': fallback_used,
+            'providerErrors': provider_errors[-2:],
+            'turnsRemaining': _turns_remaining(limits),
+            'planType': limits.get('plan_type') if isinstance(limits, dict) else None,
+            'tokenEstimate': token_estimate,
+        },
+    })
+
+
+@ai_bp.route('/dashboard-agent/history', methods=['GET', 'POST'])
+@require_auth
+def dashboard_agent_history():
+    user = request.current_user
+    data = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get('limit') or request.args.get('limit') or 12)
+    except Exception:
+        limit = 12
+    limit = max(1, min(limit, 30))
+    rows = _get_dashboard_agent_memory(user['id'], limit)
+    return jsonify({
+        'success': True,
+        'data': {
+            'entries': [_serialize_dashboard_memory(row) for row in rows],
+        },
+    })
+
+
+def _env_value(*names):
+    for name in names:
+        value = os.getenv(name, '').strip()
+        if value:
+            return value
+    return ''
+
+
+def _normalize_provider_id(value):
+    provider = str(value or '').strip().lower().replace(' ', '_')
+    allowed = set('abcdefghijklmnopqrstuvwxyz0123456789_-')
+    if not provider or any(char not in allowed for char in provider):
+        return ''
+    return provider
+
+
+def _saved_provider_config(provider):
+    config = saved_ai_runtime_config()
+    providers = config.get('providers') if isinstance(config.get('providers'), dict) else {}
+    provider_id = _normalize_provider_id(provider)
+    provider_config = providers.get(provider_id) if isinstance(providers, dict) else None
+    return provider_config if isinstance(provider_config, dict) else {}
+
+
+def _saved_provider_value(provider, key, fallback=''):
+    value = _saved_provider_config(provider).get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def _openai_compatible_provider_ids():
+    provider_ids = ['unified']
+    for provider in _custom_openai_compatible_providers():
+        provider_id = provider.get('provider')
+        if provider_id and provider_id not in provider_ids:
+            provider_ids.append(provider_id)
+    return provider_ids
+
+
+def _openai_compatible_provider(provider):
+    provider_id = _normalize_provider_id(provider)
+    if provider_id == 'unified':
+        saved = _saved_provider_config('unified')
+        return {
+            'provider': 'unified',
+            'label': 'Unified LLM Proxy',
+            'base_url': saved.get('baseUrl') or saved.get('base_url') or _env_value('UNIFIED_LLM_BASE_URL', 'FREELLM_BASE_URL', 'OPENAI_COMPATIBLE_BASE_URL'),
+            'api_key': saved.get('apiKey') or saved.get('api_key') or _env_value('UNIFIED_LLM_API_KEY', 'FREELLM_API_KEY', 'OPENAI_COMPATIBLE_API_KEY'),
+            'default_model': saved.get('defaultModel') or saved.get('default_model') or _env_value(
+                'UNIFIED_LLM_DEFAULT_MODEL',
+                'FREELLM_DEFAULT_MODEL',
+                'OPENAI_COMPATIBLE_DEFAULT_MODEL',
+                'AI_DEFAULT_MODEL',
+            ) or 'auto',
+        }
+
+    for custom_provider in _custom_openai_compatible_providers():
+        if custom_provider.get('provider') == provider_id:
+            return custom_provider
+    return None
+
+
+def _custom_openai_compatible_providers():
+    raw_config = _env_value(
+        'AI_OPENAI_COMPATIBLE_PROVIDERS',
+        'OPENAI_COMPATIBLE_PROVIDERS',
+        'CUSTOM_LLM_PROVIDERS',
+    )
+    if not raw_config:
+        return []
+
+    try:
+        parsed = json.loads(raw_config)
+    except Exception:
+        return []
+
+    entries = parsed.get('providers') if isinstance(parsed, dict) else parsed
+    if not isinstance(entries, list):
+        return []
+
+    providers = []
+    reserved = {'openai', 'anthropic', 'deepseek', 'nvidia', 'fallback', 'unified'}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        provider_id = _normalize_provider_id(entry.get('provider') or entry.get('id'))
+        if not provider_id or provider_id in reserved:
+            continue
+
+        api_key_env = entry.get('apiKeyEnvVar') or entry.get('apiKeyEnv') or f'{provider_id.upper()}_API_KEY'
+        base_url_env = entry.get('baseUrlEnvVar') or entry.get('baseUrlEnv') or f'{provider_id.upper()}_BASE_URL'
+        default_model_env = (
+            entry.get('defaultModelEnvVar')
+            or entry.get('defaultModelEnv')
+            or f'{provider_id.upper()}_DEFAULT_MODEL'
+        )
+
+        providers.append({
+            'provider': provider_id,
+            'label': str(entry.get('label') or provider_id.replace('_', ' ').title()),
+            'base_url': _env_value(base_url_env) or str(entry.get('baseUrl') or entry.get('base_url') or ''),
+            'api_key': _env_value(api_key_env) or str(entry.get('apiKey') or ''),
+            'default_model': _env_value(default_model_env) or str(entry.get('defaultModel') or 'auto'),
+        })
+
+    return providers
+
+
 def _default_model_for_provider(provider):
+    custom_provider = _openai_compatible_provider(provider)
+    if custom_provider:
+        return custom_provider.get('default_model') or 'auto'
+
+    saved_model = _saved_provider_value(provider, 'defaultModel') or _saved_provider_value(provider, 'default_model')
+    if saved_model:
+        return saved_model
+
     return {
         'openai': os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-5-mini'),
         'anthropic': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-haiku-20240307'),
@@ -420,7 +629,164 @@ def _admin_support_fallback_response(ticket, context, error_message):
     }
 
 
+def _build_dashboard_agent_messages(question, recent_memory, context):
+    memory_lines = []
+    for item in recent_memory:
+        memory_lines.append(
+            f"- User asked: {item.get('question', '')[:220]}\n"
+            f"  Agent answered: {item.get('answer', '')[:420]}"
+        )
+
+    context_text = ''
+    if isinstance(context, dict) and context:
+        compact_context = {
+            key: value
+            for key, value in context.items()
+            if key in {'page', 'planType', 'topicTitle', 'progressPercent'}
+        }
+        context_text = json.dumps(compact_context)
+
+    system_prompt = (
+        "You are Robin, InterviewReady's virtual immigration interview assistant. Always remember "
+        "that your name is Robin. Help users prepare for a USCIS marriage green card interview, "
+        "understand app features, track practice next steps, and find billing or support paths. "
+        "You can answer general immigration process and interview-preparation questions, but do "
+        "not provide legal advice, immigration outcome predictions, or false certainty. If a "
+        "question needs legal judgment, say a licensed immigration attorney should review it. "
+        "For current immigration news, fees, deadlines, or policy questions, explain that rules "
+        "can change and answer from the freshest configured LLM knowledge while pointing users "
+        "to official USCIS sources or a licensed attorney for final verification. Use the memory "
+        "bank snippets to stay consistent with prior answers. Keep replies concise, supportive, "
+        "and practical. Return plain text only."
+    )
+    user_prompt = f"""
+Current app context:
+{context_text or '(none provided)'}
+
+Recent memory bank:
+{chr(10).join(memory_lines) if memory_lines else '(no saved agent memory yet)'}
+
+User question:
+{question}
+
+Answer directly. If useful, include a short next step the user can take inside the dashboard.
+"""
+    return [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': user_prompt},
+    ]
+
+
+def _normalize_dashboard_agent_answer(response_text):
+    answer = (response_text or '').strip()
+    if answer.startswith('```'):
+        answer = answer.strip('`')
+        answer = answer.replace('text\n', '', 1).replace('text\r\n', '', 1)
+    if not answer:
+        answer = 'I could not generate an answer right now. Please try again in a moment.'
+    return answer[:2400]
+
+
+def _estimate_token_count(value):
+    return max(1, int(len(str(value or '')) / 4) + 1)
+
+
+def _extract_memory_tags(question, answer):
+    text = f"{question} {answer}".lower()
+    tag_rules = {
+        'billing': ('payment', 'stripe', 'checkout', 'refund', 'price', 'upgrade', 'cancel', 'subscription'),
+        'account': ('login', 'sign in', 'signup', 'sign up', 'password', 'email', 'dashboard'),
+        'interview': ('interview', 'officer', 'uscis', 'green card', 'question', 'answer'),
+        'relationship': ('spouse', 'marriage', 'relationship', 'partner', 'couple'),
+        'documents': ('document', 'evidence', 'pdf', 'download', 'checklist', 'timeline'),
+        'practice': ('practice', 'coach', 'mock', 'readiness', 'progress', 'review'),
+        'support': ('support', 'ticket', 'help', 'issue', 'problem'),
+    }
+    tags = [tag for tag, needles in tag_rules.items() if any(needle in text for needle in needles)]
+    return tags[:6] or ['general']
+
+
+def _get_dashboard_agent_memory(user_id, limit=10):
+    try:
+        return db.query_all(
+            """
+            SELECT id, question, answer, provider, model, topic_tags, source,
+                   memory_metadata, created_at, updated_at
+            FROM dashboard_agent_memory
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (user_id, limit),
+        )
+    except Exception:
+        return []
+
+
+def _record_dashboard_agent_memory(user_id, question, answer, provider, model, tags, metadata):
+    try:
+        return db.execute_returning(
+            """
+            INSERT INTO dashboard_agent_memory (
+                user_id, question, answer, provider, model, topic_tags,
+                source, memory_metadata
+            )
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, 'dashboard_virtual_agent', %s::jsonb)
+            RETURNING id, question, answer, provider, model, topic_tags, source,
+                      memory_metadata, created_at, updated_at
+            """,
+            (
+                user_id,
+                question,
+                answer,
+                provider,
+                model,
+                json.dumps(tags),
+                json.dumps(metadata),
+            ),
+        )
+    except Exception:
+        return None
+
+
+def _serialize_dashboard_memory(row, question=None, answer=None, provider=None, model=None, tags=None):
+    row = row or {}
+    created_at = row.get('created_at')
+    updated_at = row.get('updated_at')
+    row_tags = row.get('topic_tags')
+    if not isinstance(row_tags, list):
+        row_tags = []
+    metadata = parse_jsonish(row.get('memory_metadata'), {})
+    try:
+        token_estimate = int(metadata.get('tokenEstimate') or 0) or None
+    except Exception:
+        token_estimate = None
+    return {
+        'id': str(row.get('id') or uuid.uuid4()),
+        'question': question or row.get('question') or '',
+        'answer': answer or row.get('answer') or '',
+        'provider': provider or row.get('provider'),
+        'model': model or row.get('model'),
+        'tags': tags if tags is not None else row_tags,
+        'source': row.get('source') or 'dashboard_virtual_agent',
+        'createdAt': created_at.isoformat() if hasattr(created_at, 'isoformat') else None,
+        'updatedAt': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else None,
+        'tokenEstimate': token_estimate or (
+            _estimate_token_count(question or row.get('question') or '')
+            + _estimate_token_count(answer or row.get('answer') or '')
+        ),
+    }
+
+
 def _provider_configured(provider):
+    custom_provider = _openai_compatible_provider(provider)
+    if custom_provider:
+        return bool(custom_provider.get('api_key') and custom_provider.get('base_url'))
+
+    saved_key = _saved_provider_value(provider, 'apiKey') or _saved_provider_value(provider, 'api_key')
+    if saved_key:
+        return True
+
     return {
         'openai': bool(OPENAI_API_KEY),
         'anthropic': bool(ANTHROPIC_API_KEY),
@@ -430,11 +796,20 @@ def _provider_configured(provider):
 
 
 def _provider_priority(preferred_provider):
-    configured_order = [
-        item.strip()
-        for item in os.getenv('AI_FALLBACK_PROVIDERS', 'nvidia,deepseek,anthropic,openai').split(',')
-        if item.strip()
-    ]
+    saved_config = saved_ai_runtime_config()
+    saved_order = saved_config.get('fallbackProviders') or saved_config.get('fallback_providers')
+    if isinstance(saved_order, list):
+        configured_order = [_normalize_provider_id(item) for item in saved_order if _normalize_provider_id(item)]
+    else:
+        configured_order = [
+            item.strip()
+            for item in os.getenv('AI_FALLBACK_PROVIDERS', 'unified,nvidia,deepseek,anthropic,openai').split(',')
+            if item.strip()
+        ]
+    for provider in _openai_compatible_provider_ids():
+        if provider not in configured_order:
+            configured_order.append(provider)
+
     ordered = []
     if preferred_provider and preferred_provider != 'fallback':
         ordered.append(preferred_provider)
@@ -444,7 +819,22 @@ def _provider_priority(preferred_provider):
     return ordered
 
 
+def _select_default_provider():
+    saved_config = saved_ai_runtime_config()
+    configured_default = _normalize_provider_id(saved_config.get('defaultProvider') or saved_config.get('default_provider') or os.getenv('AI_DEFAULT_PROVIDER', '').strip())
+    if configured_default and _provider_configured(configured_default):
+        return configured_default
+
+    for provider in _provider_priority(None):
+        if _provider_configured(provider):
+            return provider
+    return 'fallback'
+
+
 def _call_provider(provider, model, messages):
+    custom_provider = _openai_compatible_provider(provider)
+    if custom_provider:
+        return _call_openai_compatible_provider(custom_provider, model, messages)
     if provider == 'anthropic':
         return _call_anthropic(model, messages)
     if provider == 'deepseek':
@@ -635,12 +1025,13 @@ def _fallback_follow_up(data):
 
 
 def _call_openai(model, messages):
-    if not OPENAI_API_KEY:
+    api_key = _saved_provider_value('openai', 'apiKey') or _saved_provider_value('openai', 'api_key') or OPENAI_API_KEY
+    if not api_key:
         raise ValueError('OpenAI API key not configured')
 
     resp = http_requests.post(
         'https://api.openai.com/v1/chat/completions',
-        headers={'Authorization': f'Bearer {OPENAI_API_KEY}', 'Content-Type': 'application/json'},
+        headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model, 'messages': messages, 'max_tokens': 500},
         timeout=30
     )
@@ -651,6 +1042,8 @@ def _call_openai(model, messages):
 def _call_openai_compatible(base_url, api_key, model, messages):
     if not api_key:
         raise ValueError('API key not configured')
+    if not base_url:
+        raise ValueError('OpenAI-compatible base URL not configured')
 
     resp = http_requests.post(
         f'{base_url.rstrip("/")}/chat/completions',
@@ -662,8 +1055,18 @@ def _call_openai_compatible(base_url, api_key, model, messages):
     return resp.json()['choices'][0]['message']['content']
 
 
+def _call_openai_compatible_provider(provider_config, model, messages):
+    return _call_openai_compatible(
+        provider_config.get('base_url') or '',
+        provider_config.get('api_key') or '',
+        model or provider_config.get('default_model') or 'auto',
+        messages,
+    )
+
+
 def _call_anthropic(model, messages):
-    if not ANTHROPIC_API_KEY:
+    api_key = _saved_provider_value('anthropic', 'apiKey') or _saved_provider_value('anthropic', 'api_key') or ANTHROPIC_API_KEY
+    if not api_key:
         raise ValueError('Anthropic API key not configured')
 
     system_msg = ''
@@ -677,7 +1080,7 @@ def _call_anthropic(model, messages):
     resp = http_requests.post(
         'https://api.anthropic.com/v1/messages',
         headers={
-            'x-api-key': ANTHROPIC_API_KEY,
+            'x-api-key': api_key,
             'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json',
         },
@@ -694,12 +1097,13 @@ def _call_anthropic(model, messages):
 
 
 def _call_deepseek(model, messages):
-    if not DEEPSEEK_API_KEY:
+    api_key = _saved_provider_value('deepseek', 'apiKey') or _saved_provider_value('deepseek', 'api_key') or DEEPSEEK_API_KEY
+    if not api_key:
         raise ValueError('DeepSeek API key not configured')
 
     resp = http_requests.post(
         'https://api.deepseek.com/v1/chat/completions',
-        headers={'Authorization': f'Bearer {DEEPSEEK_API_KEY}', 'Content-Type': 'application/json'},
+        headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model or 'deepseek-chat', 'messages': messages, 'max_tokens': 500},
         timeout=30
     )
@@ -708,9 +1112,10 @@ def _call_deepseek(model, messages):
 
 
 def _call_nvidia(model, messages):
+    api_key = _saved_provider_value('nvidia', 'apiKey') or _saved_provider_value('nvidia', 'api_key') or NVIDIA_API_KEY
     return _call_openai_compatible(
         'https://integrate.api.nvidia.com/v1',
-        NVIDIA_API_KEY,
+        api_key,
         model or 'meta/llama-3.1-8b-instruct',
         messages,
     )

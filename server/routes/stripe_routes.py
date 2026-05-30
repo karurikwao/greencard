@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
 import db
 from email_service import send_purchase_confirmation_email
+from lifecycle_messages import send_lifecycle_dashboard_message
 from support_service import build_retention_offer
 
 stripe_bp = Blueprint('stripe', __name__)
@@ -1023,6 +1024,7 @@ def _handle_checkout_completed(session_data):
             pass
 
     if should_send_purchase_email:
+        recipient = None
         try:
             customer_details = session_data.get('customer_details', {}) or {}
             recipient = customer_details.get('email')
@@ -1033,6 +1035,13 @@ def _handle_checkout_completed(session_data):
                 send_purchase_confirmation_email(recipient, plan_type, session_data.get('id'))
         except Exception as e:
             print(f"Purchase confirmation email failed for user {user_id}: {e}")
+        try:
+            if not recipient:
+                user_row = db.query_one("SELECT email FROM users WHERE id = %s", (user_id,))
+                recipient = user_row['email'] if user_row else None
+            send_lifecycle_dashboard_message(user_id, recipient, 'upgrade')
+        except Exception as e:
+            print(f"Dashboard upgrade message failed for user {user_id}: {e}")
 
 
 def _handle_subscription_updated(subscription_data):

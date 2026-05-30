@@ -4,7 +4,9 @@ import uuid
 from flask import Blueprint, request, jsonify
 from auth import require_auth, require_admin, optional_auth
 import db
+from admin_settings import get_admin_setting, save_admin_setting, saved_ai_runtime_config, saved_welcome_message_config
 from email_service import (
+    send_dashboard_message_email,
     send_refund_alert_admin_email,
     send_support_reply_email,
     send_support_ticket_admin_email,
@@ -22,6 +24,60 @@ from support_service import (
 )
 
 api_bp = Blueprint('api', __name__)
+
+
+def _mask_secret(value):
+    value = str(value or '')
+    if not value:
+        return ''
+    if len(value) <= 8:
+        return '••••'
+    return f"{value[:4]}••••{value[-4:]}"
+
+
+def _public_ai_runtime_config(config=None):
+    config = config if isinstance(config, dict) else saved_ai_runtime_config()
+    providers = config.get('providers') if isinstance(config.get('providers'), dict) else {}
+    public_providers = {}
+    for provider_id, provider_config in providers.items():
+        if not isinstance(provider_config, dict):
+            continue
+        api_key = provider_config.get('apiKey') or provider_config.get('api_key') or ''
+        public_providers[provider_id] = {
+            **{k: v for k, v in provider_config.items() if k not in {'apiKey', 'api_key'}},
+            'apiKeyConfigured': bool(api_key),
+            'apiKeyMasked': _mask_secret(api_key),
+        }
+    return {
+        'defaultProvider': config.get('defaultProvider') or config.get('default_provider') or '',
+        'defaultModel': config.get('defaultModel') or config.get('default_model') or '',
+        'fallbackProviders': config.get('fallbackProviders') or config.get('fallback_providers') or [],
+        'providers': public_providers,
+    }
+
+
+def _create_dashboard_message(user_id, title, message, metadata=None, send_email=False):
+    user_row = db.query_one("SELECT email FROM users WHERE id = %s", (user_id,))
+    if not user_row:
+        return False
+    notification_id = db.call_function('create_user_notification', (
+        user_id,
+        'broadcast',
+        title,
+        message,
+        '/messages',
+        json_dumps({
+            **(metadata or {}),
+            'rich_content': True,
+            'direct_message': True,
+        }),
+    ))
+    if send_email and user_row.get('email'):
+        try:
+            send_dashboard_message_email(user_row['email'], title, message, None, str(notification_id or user_id))
+        except Exception:
+            pass
+    return True
 
 
 @api_bp.route('/rpc/<func_name>', methods=['POST'])
@@ -157,6 +213,7 @@ def call_rpc(func_name):
         'get_user_download_summary': {'p_user_id': lambda: user['id']},
         'mark_notification_read': {'p_notification_id': lambda: data.get('notificationId')},
         'get_unread_notification_count': {},
+        'get_user_tickets_with_replies': {'p_user_id': lambda: user['id']},
         'create_support_ticket': {
             'p_user_id': lambda: user['id'],
             'p_subject': lambda: data.get('p_subject') or data.get('subject'),
@@ -689,13 +746,113 @@ def admin_system_status():
         },
     }
 
+    def ai_env_value(*names):
+        for name in names:
+            value = os.getenv(name, '').strip()
+            if value:
+                return value
+        return ''
+
+    def normalize_provider_id(value):
+        provider_id = str(value or '').strip().lower().replace(' ', '_')
+        allowed = set('abcdefghijklmnopqrstuvwxyz0123456789_-')
+        if not provider_id or any(char not in allowed for char in provider_id):
+            return ''
+        return provider_id
+
+    def safe_int(value, fallback):
+        try:
+            return int(value)
+        except Exception:
+            return fallback
+
+    def compatible_provider_statuses():
+        statuses = []
+        raw_config = ai_env_value(
+            'AI_OPENAI_COMPATIBLE_PROVIDERS',
+            'OPENAI_COMPATIBLE_PROVIDERS',
+            'CUSTOM_LLM_PROVIDERS',
+        )
+        if not raw_config:
+            return statuses
+
+        try:
+            parsed = json.loads(raw_config)
+        except Exception:
+            return statuses
+
+        entries = parsed.get('providers') if isinstance(parsed, dict) else parsed
+        if not isinstance(entries, list):
+            return statuses
+
+        reserved = {'openai', 'anthropic', 'deepseek', 'nvidia', 'fallback', 'unified'}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            provider_id = normalize_provider_id(entry.get('provider') or entry.get('id'))
+            if not provider_id or provider_id in reserved:
+                continue
+
+            api_key_env = entry.get('apiKeyEnvVar') or entry.get('apiKeyEnv') or f'{provider_id.upper()}_API_KEY'
+            base_url_env = entry.get('baseUrlEnvVar') or entry.get('baseUrlEnv') or f'{provider_id.upper()}_BASE_URL'
+            default_model_env = (
+                entry.get('defaultModelEnvVar')
+                or entry.get('defaultModelEnv')
+                or f'{provider_id.upper()}_DEFAULT_MODEL'
+            )
+            api_key_configured = bool(ai_env_value(api_key_env) or entry.get('apiKey'))
+            base_url = ai_env_value(base_url_env) or str(entry.get('baseUrl') or entry.get('base_url') or '')
+            default_model = ai_env_value(default_model_env) or str(entry.get('defaultModel') or 'auto')
+            models = entry.get('models') if isinstance(entry.get('models'), list) else []
+            statuses.append({
+                'provider': provider_id,
+                'label': str(entry.get('label') or provider_id.replace('_', ' ').title()),
+                'configured': api_key_configured and bool(base_url),
+                'defaultModel': default_model,
+                'modelCount': len(models) or safe_int(entry.get('modelCount'), 1),
+                'apiKeyConfigured': api_key_configured,
+                'baseUrlConfigured': bool(base_url),
+                'baseUrl': base_url,
+                'apiKeyEnvVar': api_key_env,
+                'baseUrlEnvVar': base_url_env,
+                'defaultModelEnvVar': default_model_env,
+                'openAICompatible': True,
+                'configurationHint': 'OpenAI-compatible provider from AI_OPENAI_COMPATIBLE_PROVIDERS.',
+            })
+        return statuses
+
+    unified_key = ai_env_value('UNIFIED_LLM_API_KEY', 'FREELLM_API_KEY', 'OPENAI_COMPATIBLE_API_KEY')
+    unified_base_url = ai_env_value('UNIFIED_LLM_BASE_URL', 'FREELLM_BASE_URL', 'OPENAI_COMPATIBLE_BASE_URL')
+    unified_default_model = ai_env_value(
+        'UNIFIED_LLM_DEFAULT_MODEL',
+        'FREELLM_DEFAULT_MODEL',
+        'OPENAI_COMPATIBLE_DEFAULT_MODEL',
+        'AI_DEFAULT_MODEL',
+    ) or 'auto'
+
     providers = [
+        {
+            'provider': 'unified',
+            'label': 'Unified LLM Proxy',
+            'configured': bool(unified_key and unified_base_url),
+            'defaultModel': unified_default_model,
+            'modelCount': safe_int(os.getenv('UNIFIED_LLM_MODEL_COUNT', '3'), 3),
+            'apiKeyConfigured': bool(unified_key),
+            'baseUrlConfigured': bool(unified_base_url),
+            'baseUrl': unified_base_url,
+            'apiKeyEnvVar': 'UNIFIED_LLM_API_KEY',
+            'baseUrlEnvVar': 'UNIFIED_LLM_BASE_URL',
+            'defaultModelEnvVar': 'UNIFIED_LLM_DEFAULT_MODEL',
+            'openAICompatible': True,
+            'configurationHint': 'Use this for OpenAI-compatible gateways, routers, and self-hosted LLM proxies.',
+        },
         {
             'provider': 'openai',
             'label': 'OpenAI',
             'configured': bool(os.getenv('OPENAI_API_KEY')),
             'defaultModel': os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-5-mini'),
             'modelCount': 3,
+            'apiKeyEnvVar': 'OPENAI_API_KEY',
         },
         {
             'provider': 'anthropic',
@@ -703,6 +860,7 @@ def admin_system_status():
             'configured': bool(os.getenv('ANTHROPIC_API_KEY')),
             'defaultModel': os.getenv('ANTHROPIC_DEFAULT_MODEL', 'claude-3-haiku-20240307'),
             'modelCount': 3,
+            'apiKeyEnvVar': 'ANTHROPIC_API_KEY',
         },
         {
             'provider': 'deepseek',
@@ -710,6 +868,7 @@ def admin_system_status():
             'configured': bool(os.getenv('DEEPSEEK_API_KEY')),
             'defaultModel': os.getenv('DEEPSEEK_DEFAULT_MODEL', 'deepseek-chat'),
             'modelCount': 2,
+            'apiKeyEnvVar': 'DEEPSEEK_API_KEY',
         },
         {
             'provider': 'nvidia',
@@ -717,8 +876,44 @@ def admin_system_status():
             'configured': bool(os.getenv('NVIDIA_API_KEY')),
             'defaultModel': os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct'),
             'modelCount': 3,
+            'apiKeyEnvVar': 'NVIDIA_API_KEY',
         },
     ]
+    providers.extend(compatible_provider_statuses())
+
+    saved_ai = saved_ai_runtime_config()
+    saved_providers = saved_ai.get('providers') if isinstance(saved_ai.get('providers'), dict) else {}
+    for provider in providers:
+        saved_provider = saved_providers.get(provider['provider']) if isinstance(saved_providers, dict) else None
+        if not isinstance(saved_provider, dict):
+            continue
+        saved_key = saved_provider.get('apiKey') or saved_provider.get('api_key') or ''
+        saved_base_url = saved_provider.get('baseUrl') or saved_provider.get('base_url') or ''
+        saved_model = saved_provider.get('defaultModel') or saved_provider.get('default_model') or ''
+        if saved_key:
+            provider['apiKeyConfigured'] = True
+        if saved_base_url:
+            provider['baseUrlConfigured'] = True
+            provider['baseUrl'] = saved_base_url
+        if saved_model:
+            provider['defaultModel'] = saved_model
+        provider['managedInAdmin'] = True
+        provider['configured'] = bool(
+            provider.get('apiKeyConfigured') and (
+                not provider.get('openAICompatible') or provider.get('baseUrlConfigured') or provider.get('baseUrl')
+            )
+        )
+
+    default_provider = saved_ai.get('defaultProvider') or saved_ai.get('default_provider') or os.getenv('AI_DEFAULT_PROVIDER')
+    if not default_provider:
+        default_provider = 'unified' if unified_key and unified_base_url else ('nvidia' if os.getenv('NVIDIA_API_KEY') else 'openai')
+    default_model = saved_ai.get('defaultModel') or saved_ai.get('default_model') or os.getenv('AI_DEFAULT_MODEL')
+    if not default_model:
+        provider_match = next((p for p in providers if p.get('provider') == default_provider), None)
+        default_model = provider_match.get('defaultModel') if provider_match else (
+            unified_default_model if default_provider == 'unified'
+            else os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct')
+        )
 
     auto_create_test_prices = (
         stripe_mode == 'test'
@@ -733,9 +928,10 @@ def admin_system_status():
         'environment': os.getenv('FLASK_ENV', 'production'),
         'frontendUrl': os.getenv('FRONTEND_URL', ''),
         'ai': {
-            'defaultProvider': os.getenv('AI_DEFAULT_PROVIDER', 'nvidia' if os.getenv('NVIDIA_API_KEY') else 'openai'),
-            'defaultModel': os.getenv('AI_DEFAULT_MODEL', os.getenv('NVIDIA_DEFAULT_MODEL', 'meta/llama-3.1-8b-instruct')),
+            'defaultProvider': default_provider,
+            'defaultModel': default_model,
             'providers': providers,
+            'settings': _public_ai_runtime_config(saved_ai),
         },
         'stripe': {
             'mode': stripe_mode,
@@ -758,6 +954,86 @@ def admin_system_status():
             'apiUrl': os.getenv('PLUNK_API_URL', 'https://next-api.useplunk.com/v1/send'),
         },
     })
+
+
+@api_bp.route('/admin/ai-settings', methods=['GET', 'POST'])
+@require_admin
+def admin_ai_settings_endpoint():
+    user = request.current_user
+    if request.method == 'GET':
+        return jsonify({'success': True, 'settings': _public_ai_runtime_config()})
+
+    data = request.get_json() or {}
+    providers = data.get('providers') if isinstance(data.get('providers'), dict) else {}
+    sanitized_providers = {}
+    existing = saved_ai_runtime_config()
+    existing_providers = existing.get('providers') if isinstance(existing.get('providers'), dict) else {}
+
+    for provider_id, provider_config in providers.items():
+        if not isinstance(provider_config, dict):
+            continue
+        provider_key = str(provider_id or '').strip().lower()
+        if not provider_key:
+            continue
+        previous = existing_providers.get(provider_key) if isinstance(existing_providers, dict) else {}
+        previous = previous if isinstance(previous, dict) else {}
+        api_key = provider_config.get('apiKey')
+        if not api_key and (provider_config.get('keepExistingApiKey') or provider_config.get('apiKeyConfigured')):
+            api_key = previous.get('apiKey') or previous.get('api_key')
+        sanitized = {
+            'enabled': bool(provider_config.get('enabled', True)),
+            'defaultModel': str(provider_config.get('defaultModel') or provider_config.get('default_model') or '').strip(),
+        }
+        base_url = str(provider_config.get('baseUrl') or provider_config.get('base_url') or '').strip()
+        if base_url:
+            sanitized['baseUrl'] = base_url
+        if api_key:
+            sanitized['apiKey'] = str(api_key).strip()
+        sanitized_providers[provider_key] = sanitized
+
+    fallback = data.get('fallbackProviders') or data.get('fallback_providers') or []
+    if isinstance(fallback, str):
+        fallback = [item.strip() for item in fallback.split(',') if item.strip()]
+    if not isinstance(fallback, list):
+        fallback = []
+
+    saved = save_admin_setting('ai_runtime_config', {
+        'defaultProvider': str(data.get('defaultProvider') or data.get('default_provider') or '').strip().lower(),
+        'defaultModel': str(data.get('defaultModel') or data.get('default_model') or '').strip(),
+        'fallbackProviders': [str(item).strip().lower() for item in fallback if str(item).strip()],
+        'providers': sanitized_providers,
+    }, user.get('id'))
+    return jsonify({'success': True, 'settings': _public_ai_runtime_config(saved)})
+
+
+@api_bp.route('/admin/welcome-messages', methods=['GET', 'POST'])
+@require_admin
+def admin_welcome_messages_endpoint():
+    user = request.current_user
+    defaults = {
+        'signupEnabled': True,
+        'upgradeEnabled': True,
+        'sendEmail': True,
+        'signupTitle': 'Welcome to InterviewReady',
+        'signupMessage': 'Your free account is ready. Start with your dashboard, build your timeline, and save questions for later review.',
+        'upgradeTitle': 'Premium access unlocked',
+        'upgradeMessage': 'Thank you for upgrading. Your premium downloads, partner sync, and Robin practice access are now available in your dashboard.',
+    }
+    current = {**defaults, **(saved_welcome_message_config() or {})}
+    if request.method == 'GET':
+        return jsonify({'success': True, 'settings': current})
+
+    data = request.get_json() or {}
+    saved = save_admin_setting('welcome_messages', {
+        'signupEnabled': bool(data.get('signupEnabled', current['signupEnabled'])),
+        'upgradeEnabled': bool(data.get('upgradeEnabled', current['upgradeEnabled'])),
+        'sendEmail': bool(data.get('sendEmail', current['sendEmail'])),
+        'signupTitle': str(data.get('signupTitle') or current['signupTitle'])[:200],
+        'signupMessage': str(data.get('signupMessage') or current['signupMessage'])[:6000],
+        'upgradeTitle': str(data.get('upgradeTitle') or current['upgradeTitle'])[:200],
+        'upgradeMessage': str(data.get('upgradeMessage') or current['upgradeMessage'])[:6000],
+    }, user.get('id'))
+    return jsonify({'success': True, 'settings': {**defaults, **(saved or {})}})
 
 
 @api_bp.route('/admin/users', methods=['GET', 'POST'])
@@ -861,6 +1137,32 @@ def admin_users():
         return jsonify({'error': str(e)}), 500
 
 
+@api_bp.route('/admin/users/<user_id>/message', methods=['POST'])
+@require_admin
+def admin_send_user_message(user_id):
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()[:200]
+    message = (data.get('message') or '').strip()[:10000]
+    send_email = bool(data.get('sendEmail', data.get('send_email', True)))
+
+    if not title or not message:
+        return jsonify({'error': 'Title and message are required'}), 400
+
+    try:
+        ok = _create_dashboard_message(
+            user_id,
+            title,
+            message,
+            {'created_from': 'admin_user_management', 'rich_content': True},
+            send_email,
+        )
+        if not ok:
+            return jsonify({'error': 'User not found'}), 404
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def _support_ticket_with_user(ticket_id):
     return db.query_one(
         """
@@ -887,6 +1189,216 @@ def _send_support_admin_emails(ticket, context, refund_signal):
         except Exception:
             pass
     return sent
+
+
+def _serialize_broadcast(row):
+    row = row or {}
+    created_at = row.get('created_at')
+    updated_at = row.get('updated_at')
+    scheduled_at = row.get('scheduled_at')
+    return {
+        'id': str(row.get('id') or ''),
+        'title': row.get('title') or '',
+        'message': row.get('message') or '',
+        'audienceType': row.get('audience_type') or 'all_users',
+        'isActive': bool(row.get('is_active', True)),
+        'sentCount': int(row.get('sent_count') or 0),
+        'scheduledAt': scheduled_at.isoformat() if hasattr(scheduled_at, 'isoformat') else scheduled_at,
+        'sendEmail': bool(row.get('send_email', True)),
+        'createdBy': str(row.get('created_by') or '') or None,
+        'createdAt': created_at.isoformat() if hasattr(created_at, 'isoformat') else created_at,
+        'updatedAt': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else updated_at,
+    }
+
+
+def _broadcast_recipients(audience_type):
+    return db.query_all(
+        """
+        SELECT u.id::text AS user_id, u.email,
+               COALESCE(s.plan_type, 'trial') AS plan_type,
+               COALESCE(s.status, 'trialing') AS subscription_status
+        FROM users u
+        LEFT JOIN user_subscriptions s ON s.user_id = u.id
+        WHERE COALESCE(u.email, '') <> ''
+          AND CASE %s
+            WHEN 'all_users' THEN true
+            WHEN 'trial_users' THEN s.user_id IS NULL OR COALESCE(s.plan_type, 'trial') = 'trial' OR COALESCE(s.status, 'trialing') = 'trialing'
+            WHEN 'premium_users' THEN COALESCE(s.plan_type, 'trial') IN ('monthly', 'lifetime', 'interviewPass') AND COALESCE(s.status, 'active') IN ('active', 'canceled', 'grace_period')
+            WHEN 'expired_users' THEN COALESCE(s.status, '') IN ('expired', 'canceled', 'past_due') OR (s.current_period_ends_at < now() AND COALESCE(s.status, '') <> 'active')
+            WHEN 'free_users' THEN s.user_id IS NULL OR COALESCE(s.plan_type, 'trial') = 'trial'
+            ELSE true
+          END
+        LIMIT 2000
+        """,
+        (audience_type or 'all_users',),
+    )
+
+
+def _publish_broadcast_row(row):
+    if not row or not row.get('is_active', True):
+        return 0
+
+    count = 0
+    for recipient in _broadcast_recipients(row.get('audience_type') or 'all_users'):
+        try:
+            db.call_function('create_user_notification', (
+                recipient['user_id'],
+                'broadcast',
+                row.get('title') or 'Dashboard message',
+                row.get('message') or '',
+                '/messages',
+                json_dumps({
+                    'broadcast_id': str(row.get('id') or ''),
+                    'audience_type': row.get('audience_type') or 'all_users',
+                    'rich_content': True,
+                }),
+            ))
+            count += 1
+            if row.get('send_email', True):
+                send_dashboard_message_email(
+                    recipient['email'],
+                    row.get('title') or 'New InterviewReady dashboard message',
+                    row.get('message') or '',
+                    None,
+                    str(row.get('id') or ''),
+                )
+        except Exception:
+            continue
+
+    try:
+        db.execute(
+            """
+            UPDATE broadcast_messages
+            SET sent_count = %s, updated_at = now()
+            WHERE id = %s
+            """,
+            (count, row.get('id')),
+        )
+    except Exception:
+        pass
+    return count
+
+
+def _publish_due_broadcast_rows():
+    rows = db.query_all(
+        """
+        SELECT id, title, message, audience_type, is_active, sent_count,
+               scheduled_at, send_email, created_by, created_at, updated_at
+        FROM broadcast_messages
+        WHERE is_active = true
+          AND COALESCE(sent_count, 0) = 0
+          AND scheduled_at IS NOT NULL
+          AND scheduled_at <= now()
+        ORDER BY scheduled_at ASC
+        LIMIT 25
+        """
+    )
+    total = 0
+    for row in rows:
+        total += _publish_broadcast_row(row)
+    return rows, total
+
+
+@api_bp.route('/admin/broadcasts', methods=['GET', 'POST'])
+@require_admin
+def admin_broadcasts_endpoint():
+    user = request.current_user
+    if request.method == 'GET':
+      _publish_due_broadcast_rows()
+      rows = db.query_all(
+          """
+          SELECT id, title, message, audience_type, is_active, sent_count,
+                 scheduled_at, send_email, created_by, created_at, updated_at
+          FROM broadcast_messages
+          ORDER BY created_at DESC
+          LIMIT 200
+          """
+      )
+      return jsonify({'success': True, 'broadcasts': [_serialize_broadcast(row) for row in rows]})
+
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()[:200]
+    message = (data.get('message') or '').strip()[:10000]
+    audience_type = (data.get('audienceType') or data.get('audience_type') or 'all_users').strip()
+    if audience_type not in {'all_users', 'trial_users', 'premium_users', 'expired_users', 'free_users'}:
+        audience_type = 'all_users'
+    scheduled_at = data.get('scheduledAt') or data.get('scheduled_at') or None
+    send_email = bool(data.get('sendEmail', data.get('send_email', True)))
+    publish_now = bool(data.get('publishNow', data.get('publish_now', True)))
+
+    if not title or not message:
+        return jsonify({'error': 'Title and message are required'}), 400
+
+    try:
+        row = db.execute_returning(
+            """
+            INSERT INTO broadcast_messages (
+              title, message, audience_type, is_active, scheduled_at,
+              send_email, created_by, metadata
+            )
+            VALUES (%s, %s, %s, true, %s, %s, %s, %s::jsonb)
+            RETURNING id, title, message, audience_type, is_active, sent_count,
+                      scheduled_at, send_email, created_by, created_at, updated_at
+            """,
+            (
+                title,
+                message,
+                audience_type,
+                scheduled_at,
+                send_email,
+                user['id'],
+                json_dumps({'rich_content': True, 'created_from': 'admin_portal'}),
+            ),
+        )
+        sent_count = _publish_broadcast_row(row) if publish_now else 0
+        if sent_count:
+            row = db.query_one(
+                """
+                SELECT id, title, message, audience_type, is_active, sent_count,
+                       scheduled_at, send_email, created_by, created_at, updated_at
+                FROM broadcast_messages
+                WHERE id = %s
+                """,
+                (row['id'],),
+            )
+        return jsonify({'success': True, 'broadcast': _serialize_broadcast(row), 'sentCount': sent_count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/admin/broadcasts/<broadcast_id>/publish', methods=['POST'])
+@require_admin
+def publish_admin_broadcast(broadcast_id):
+    row = db.query_one(
+        """
+        SELECT id, title, message, audience_type, is_active, sent_count,
+               scheduled_at, send_email, created_by, created_at, updated_at
+        FROM broadcast_messages
+        WHERE id = %s
+        """,
+        (broadcast_id,),
+    )
+    if not row:
+        return jsonify({'error': 'Broadcast not found'}), 404
+    try:
+        sent_count = _publish_broadcast_row(row)
+        return jsonify({'success': True, 'sentCount': sent_count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/admin/broadcasts/publish-due', methods=['POST'])
+@require_admin
+def publish_due_admin_broadcasts():
+    rows, total = _publish_due_broadcast_rows()
+    return jsonify({'success': True, 'published': len(rows), 'sentCount': total})
+
+
+@api_bp.route('/broadcasts/publish-due', methods=['POST'])
+@require_auth
+def publish_due_user_broadcasts():
+    rows, total = _publish_due_broadcast_rows()
+    return jsonify({'success': True, 'published': len(rows), 'sentCount': total})
 
 
 @api_bp.route('/support/tickets', methods=['POST'])
@@ -1102,6 +1614,15 @@ def admin_memory_status():
                OR is_saved_for_later = true
             """
         ) or {}
+        agent_memory_stats = db.query_one(
+            """
+            SELECT
+              COUNT(*) AS total_entries,
+              COUNT(DISTINCT user_id) AS users_with_agent_memory,
+              COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS captured_today
+            FROM dashboard_agent_memory
+            """
+        ) or {}
         plan_rows = db.query_all(
             """
             SELECT plan_type, name, max_turns_per_session, max_sessions_per_day,
@@ -1116,9 +1637,11 @@ def admin_memory_status():
             'answerCandidates': answer_stats,
             'seoExpansionPages': page_stats,
             'questionStateIndex': question_stats,
+            'dashboardAgentMemory': agent_memory_stats,
             'planLimits': plan_rows,
             'notes': [
                 'AI interview answers are sanitized and stored as answer_example_candidates for manual admin review.',
+                'Robin chat questions and answers are saved in dashboard_agent_memory with searchable indexes.',
                 'Approved answer candidates can be promoted later, but original private answers are not published automatically.',
                 'SEO expansion pages remain noindex/sitemap-gated until approved and published.',
             ],

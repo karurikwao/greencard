@@ -8,6 +8,7 @@ from auth import (
 )
 import db
 from email_service import send_password_reset_message, send_welcome_email
+from lifecycle_messages import send_lifecycle_dashboard_message
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -83,6 +84,11 @@ def signup():
         send_welcome_email(email, first_name)
     except Exception as e:
         print(f"Welcome email failed for {email}: {e}")
+
+    try:
+        send_lifecycle_dashboard_message(user_id, email, 'signup')
+    except Exception as e:
+        print(f"Dashboard welcome message failed for {email}: {e}")
 
     token = create_token(user_id, email, 'user')
     refresh = create_refresh_token(user_id)
