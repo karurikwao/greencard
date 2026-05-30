@@ -10,6 +10,42 @@ export interface AdminProviderStatus {
   configured: boolean;
   defaultModel: string;
   modelCount: number;
+  apiKeyConfigured?: boolean;
+  baseUrlConfigured?: boolean;
+  baseUrl?: string;
+  apiKeyEnvVar?: string;
+  baseUrlEnvVar?: string;
+  defaultModelEnvVar?: string;
+  openAICompatible?: boolean;
+  configurationHint?: string;
+  managedInAdmin?: boolean;
+}
+
+export interface AdminAIProviderSetting {
+  enabled?: boolean;
+  defaultModel?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  keepExistingApiKey?: boolean;
+  apiKeyConfigured?: boolean;
+  apiKeyMasked?: string;
+}
+
+export interface AdminAISettings {
+  defaultProvider: string;
+  defaultModel: string;
+  fallbackProviders: string[];
+  providers: Record<string, AdminAIProviderSetting>;
+}
+
+export interface AdminWelcomeMessageSettings {
+  signupEnabled: boolean;
+  upgradeEnabled: boolean;
+  sendEmail: boolean;
+  signupTitle: string;
+  signupMessage: string;
+  upgradeTitle: string;
+  upgradeMessage: string;
 }
 
 export interface AdminStripePriceStatus {
@@ -30,6 +66,7 @@ export interface AdminSystemStatus {
     defaultProvider: string;
     defaultModel: string;
     providers: AdminProviderStatus[];
+    settings?: AdminAISettings;
   };
   stripe: {
     mode: StripeMode;
@@ -74,4 +111,41 @@ export async function fetchAdminSystemStatus(): Promise<AdminSystemStatus> {
   }
 
   return payload as AdminSystemStatus;
+}
+
+async function adminJson<T>(path: string, method: 'GET' | 'POST' = 'GET', body?: unknown): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method,
+    headers,
+    ...(method === 'POST' ? { body: JSON.stringify(body || {}) } : {}),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || response.statusText || 'Admin request failed');
+  }
+  return payload as T;
+}
+
+export async function fetchAdminAISettings(): Promise<AdminAISettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminAISettings }>('/api/admin/ai-settings');
+  return payload.settings;
+}
+
+export async function saveAdminAISettings(settings: AdminAISettings): Promise<AdminAISettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminAISettings }>('/api/admin/ai-settings', 'POST', settings);
+  return payload.settings;
+}
+
+export async function fetchAdminWelcomeMessages(): Promise<AdminWelcomeMessageSettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminWelcomeMessageSettings }>('/api/admin/welcome-messages');
+  return payload.settings;
+}
+
+export async function saveAdminWelcomeMessages(settings: AdminWelcomeMessageSettings): Promise<AdminWelcomeMessageSettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminWelcomeMessageSettings }>('/api/admin/welcome-messages', 'POST', settings);
+  return payload.settings;
 }

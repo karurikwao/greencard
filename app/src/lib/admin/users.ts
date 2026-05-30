@@ -60,3 +60,28 @@ export async function fetchAdminUsers(limit = 100): Promise<AdminUsersResponse> 
 
   return payload as AdminUsersResponse;
 }
+
+export async function sendAdminUserMessage(
+  userId: string,
+  input: { title: string; message: string; sendEmail?: boolean }
+): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}/api/admin/users/${userId}/message`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || response.statusText || 'Unable to send user message');
+  }
+}
