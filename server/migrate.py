@@ -68,10 +68,57 @@ def run_incremental_migrations(cur):
     )
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS dashboard_agent_memory (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            provider TEXT,
+            model TEXT,
+            topic_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+            source TEXT NOT NULL DEFAULT 'dashboard_virtual_agent',
+            memory_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dashboard_agent_memory_user_created
+            ON dashboard_agent_memory(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_dashboard_agent_memory_tags
+            ON dashboard_agent_memory USING GIN (topic_tags);
+        CREATE INDEX IF NOT EXISTS idx_dashboard_agent_memory_search
+            ON dashboard_agent_memory USING GIN (
+                to_tsvector('english', COALESCE(question, '') || ' ' || COALESCE(answer, ''))
+            );
+
+        DROP TRIGGER IF EXISTS trigger_update_dashboard_agent_memory_updated_at ON dashboard_agent_memory;
+        CREATE TRIGGER trigger_update_dashboard_agent_memory_updated_at
+        BEFORE UPDATE ON dashboard_agent_memory
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+
         ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_summary TEXT;
         ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_suggested_reply TEXT;
         ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS ai_triage JSONB DEFAULT '{}'::jsonb;
         ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS last_ai_assisted_at TIMESTAMPTZ;
+
+        ALTER TABLE broadcast_messages ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+        ALTER TABLE broadcast_messages ADD COLUMN IF NOT EXISTS send_email BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE broadcast_messages ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+        CREATE TABLE IF NOT EXISTS admin_settings (
+            key TEXT PRIMARY KEY,
+            value JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        DROP TRIGGER IF EXISTS trigger_update_admin_settings_updated_at ON admin_settings;
+        CREATE TRIGGER trigger_update_admin_settings_updated_at
+        BEFORE UPDATE ON admin_settings
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
 
         ALTER TABLE support_tickets DROP CONSTRAINT IF EXISTS support_tickets_category_check;
         ALTER TABLE support_tickets
