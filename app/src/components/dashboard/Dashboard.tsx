@@ -27,11 +27,12 @@ import {
   Trophy,
   ShieldCheck,
   MessageSquare,
-  ClipboardCheck
+  ClipboardCheck,
+  Bell,
+  Bookmark,
+  Bot
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { NotificationPanel } from '@/components/notifications';
-import { SupportTicketPanel } from '@/components/support';
 import { PlanStatusPanel } from '@/components/entitlements/PlanStatusPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,16 +56,21 @@ import { apiClient } from '@/lib/apiClient';
 import { compareProgress, getPartnerConnection, getPartnerProgress, syncProgressWithPartner } from '@/lib/practice/partnerSync';
 import { topics } from '@/data/topics';
 import { cn } from '@/lib/utils';
+import type { UserNotification } from '@/lib/notifications';
+import { getUserNotifications } from '@/lib/notifications/api';
 
 interface DashboardProps {
   onPracticeTopic: (topic: PracticeTopic) => void;
   onStartQuickPractice: () => void;
   onStartMockInterview: () => void;
+  onStartReadinessCheck: () => void;
   onViewSaved: () => void;
   onViewProgress: () => void;
   onViewTimeline: () => void;
   onViewCouplePractice: () => void;
   onUpgrade: () => void;
+  onOpenMessagesPage?: () => void;
+  onOpenRobinPage?: () => void;
   onViewAdmin?: () => void;
   canViewAdmin?: boolean;
 }
@@ -83,11 +89,14 @@ export function Dashboard({
   onPracticeTopic,
   onStartQuickPractice,
   onStartMockInterview,
+  onStartReadinessCheck,
   onViewSaved,
   onViewProgress,
   onViewTimeline,
   onViewCouplePractice,
   onUpgrade,
+  onOpenMessagesPage,
+  onOpenRobinPage,
   onViewAdmin,
   canViewAdmin = false,
 }: DashboardProps) {
@@ -122,6 +131,8 @@ export function Dashboard({
     aligned: 0,
     partnerNeedsPractice: 0,
   });
+  const [dashboardNotifications, setDashboardNotifications] = useState<UserNotification[]>([]);
+  const [messageToastDismissed, setMessageToastDismissed] = useState(false);
   
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
 
@@ -192,6 +203,32 @@ export function Dashboard({
     return nervous.slice(0, 5);
   }, [normalizedTopics, getComfortStatus]);
 
+  const savedForLaterItems = useMemo(() => {
+    const savedItems: {
+      topicId: string;
+      questionId: string;
+      topicTitle: string;
+      prompt: string;
+      questionIndex: number;
+    }[] = [];
+
+    normalizedTopics.forEach(topic => {
+      topic.questions.forEach((question, questionIndex) => {
+        if (isSavedForLater(question.id)) {
+          savedItems.push({
+            topicId: topic.id,
+            questionId: question.id,
+            topicTitle: topic.title,
+            prompt: question.prompt,
+            questionIndex: questionIndex + 1,
+          });
+        }
+      });
+    });
+
+    return savedItems;
+  }, [normalizedTopics, isSavedForLater]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -240,6 +277,32 @@ export function Dashboard({
     if (!featureAccess.coupleCompare || Object.keys(localQuestionStates).length === 0) return;
     syncProgressWithPartner(localQuestionStates, lastTopic);
   }, [featureAccess.coupleCompare, localQuestionStates, lastTopic]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDashboardNotifications = async () => {
+      const result = await getUserNotifications();
+      if (!isMounted) return;
+      if (result.success && result.data) {
+        setDashboardNotifications(result.data);
+        setMessageToastDismissed(false);
+      }
+    };
+
+    void loadDashboardNotifications();
+    const handleRefresh = () => {
+      void loadDashboardNotifications();
+    };
+    window.addEventListener('dashboard-messages-refresh', handleRefresh);
+    const interval = window.setInterval(handleRefresh, 45000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('dashboard-messages-refresh', handleRefresh);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   // Get recommended topics based on readiness
   const recommendedTopics = useMemo(() => {
@@ -394,6 +457,7 @@ export function Dashboard({
         text: result.message || 'Refund request submitted for review.',
       });
       setRefundComments('');
+      window.dispatchEvent(new CustomEvent('dashboard-messages-refresh'));
     } else {
       setRefundMessage({
         tone: 'error',
@@ -405,7 +469,7 @@ export function Dashboard({
   const featureTiles = [
     { label: 'Premium PDFs', enabled: featureAccess.pdfDownloads },
     { label: 'Partner sync', enabled: featureAccess.coupleCompare },
-    { label: 'AI interview coach', enabled: featureAccess.mockInterview },
+    { label: 'Practice with Robin', enabled: featureAccess.mockInterview },
     { label: 'Provider/model choice', enabled: hasPremium },
   ];
   const reviewQueueCount = practiceSummary.saved + practiceSummary.needsPractice + practiceSummary.nervous;
@@ -424,14 +488,14 @@ export function Dashboard({
         detail: `${readinessResult.overallScore}% readiness score`,
         action: 'Open score',
         icon: ShieldCheck,
-        onClick: onViewProgress,
+        onClick: onStartReadinessCheck,
       }
       : {
         label: 'Take readiness check',
         detail: 'Set your baseline before practice',
         action: 'Start check',
         icon: Sparkles,
-        onClick: onViewProgress,
+        onClick: onStartReadinessCheck,
       });
 
     if (reviewQueueCount > 0) {
@@ -488,6 +552,7 @@ export function Dashboard({
   }, [
     onStartMockInterview,
     onStartQuickPractice,
+    onStartReadinessCheck,
     onViewCouplePractice,
     onViewProgress,
     onViewSaved,
@@ -522,6 +587,23 @@ export function Dashboard({
       icon: Trophy,
     },
   ];
+  const unreadNotifications = dashboardNotifications.filter(notification => !notification.isRead);
+  const latestUnreadNotification = unreadNotifications[0];
+  const openMessageCenter = () => {
+    setMessageToastDismissed(true);
+    if (onOpenMessagesPage) {
+      onOpenMessagesPage();
+      return;
+    }
+    document.getElementById('dashboard-messages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const openRobin = () => {
+    if (onOpenRobinPage) {
+      onOpenRobinPage();
+      return;
+    }
+    document.getElementById('dashboard-robin')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const cardClass = 'border-2 border-blue-100 bg-white shadow-xl shadow-slate-200/70';
   const surfaceClass = 'rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 shadow-sm';
 
@@ -535,12 +617,37 @@ export function Dashboard({
               <LayoutDashboard className="h-6 w-6 text-blue-700" />
               <h1 className="text-xl font-extrabold text-slate-950">Your Dashboard</h1>
             </div>
-            {canViewAdmin && onViewAdmin && (
-              <Button variant="outline" size="sm" onClick={onViewAdmin}>
-                <Settings className="w-4 h-4 mr-2" />
-                Admin
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openRobin}
+                className="border-indigo-200 bg-white font-bold text-indigo-800 hover:bg-indigo-50"
+              >
+                <Bot className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Robin</span>
               </Button>
-            )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openMessageCenter}
+                className="relative border-emerald-200 bg-white font-bold text-emerald-800 hover:bg-emerald-50"
+              >
+                <Bell className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Messages</span>
+                {unreadNotifications.length > 0 && (
+                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[11px] font-extrabold text-white shadow-md">
+                    {unreadNotifications.length}
+                  </span>
+                )}
+              </Button>
+              {canViewAdmin && onViewAdmin && (
+                <Button variant="outline" size="sm" onClick={onViewAdmin}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Admin
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -571,12 +678,12 @@ export function Dashboard({
                       <span className="text-xs text-slate-500 pb-1">overall</span>
                     </div>
                   </div>
-                  <Button variant="outline" onClick={onViewProgress}>
+                  <Button variant="outline" onClick={onStartReadinessCheck}>
                     Details
                   </Button>
                 </div>
               ) : (
-                <Button onClick={onViewProgress} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
+                <Button onClick={onStartReadinessCheck} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-bold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800">
                   <Sparkles className="w-4 h-4 mr-2" />
                   Take Readiness Check
                 </Button>
@@ -650,6 +757,101 @@ export function Dashboard({
                   </button>
                 );
               })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className={cn(cardClass, 'overflow-hidden bg-gradient-to-br from-white via-blue-50/70 to-amber-50/70')}>
+          <CardHeader className="border-b border-blue-100/80 bg-gradient-to-r from-blue-50 via-white to-amber-50">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                  <Bookmark className="w-4 h-4 text-blue-700" />
+                  Saved for Later
+                </CardTitle>
+                <p className="mt-1 text-sm font-medium text-slate-700">
+                  Questions you bookmark during practice live here, ready for review.
+                </p>
+              </div>
+              <Badge className="w-fit border-0 bg-blue-100 text-blue-800">
+                {savedForLaterItems.length} saved
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4">
+            {savedForLaterItems.length > 0 ? (
+              <div className="space-y-3">
+                <div className="grid gap-3 lg:grid-cols-3">
+                  {savedForLaterItems.slice(0, 3).map((item) => {
+                    const topic = normalizedTopics.find(t => t.id === item.topicId);
+                    return (
+                      <button
+                        key={item.questionId}
+                        type="button"
+                        onClick={() => topic && onPracticeTopic(topic)}
+                        className="group rounded-xl border-2 border-blue-100 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-extrabold text-blue-800">
+                            Question {item.questionIndex}
+                          </span>
+                          <ArrowRight className="h-4 w-4 text-blue-700 transition group-hover:translate-x-1" />
+                        </div>
+                        <p className="line-clamp-2 text-sm font-extrabold text-slate-950">{item.prompt}</p>
+                        <p className="mt-2 line-clamp-1 text-xs font-bold text-slate-600">{item.topicTitle}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={onViewSaved} className="border-blue-200 bg-white font-bold text-blue-800 hover:bg-blue-50">
+                    Open full review list
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-blue-200 bg-white/80 p-6 text-center">
+                <Bookmark className="mx-auto h-8 w-8 text-blue-700" />
+                <p className="mt-3 font-extrabold text-slate-950">No saved questions yet</p>
+                <p className="mt-1 text-sm font-medium text-slate-700">
+                  Tap Save to review later while practicing, and those questions will appear here.
+                </p>
+                <Button variant="outline" size="sm" onClick={onViewSaved} className="mt-4 border-blue-200 bg-white font-bold text-blue-800 hover:bg-blue-50">
+                  View review list
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card
+          id="dashboard-robin"
+          className="overflow-hidden border-2 border-indigo-200 bg-gradient-to-br from-white via-indigo-50/90 to-cyan-50/80 shadow-xl shadow-indigo-200/60"
+        >
+          <div className="h-1.5 bg-gradient-to-r from-indigo-700 via-cyan-500 to-emerald-500" />
+          <CardContent className="p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-700 to-cyan-600 text-white shadow-lg shadow-indigo-200">
+                  <Bot className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-950">Chat with Robin</h3>
+                  <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-700">
+                    Ask Robin about USCIS interview prep, billing, documents, and what to practice next. She keeps
+                    conversations grouped by date, tracks daily chat usage, and saves useful answers to the memory bank.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={openRobin}
+                className="w-fit bg-gradient-to-r from-indigo-700 to-cyan-700 font-extrabold text-white shadow-lg shadow-indigo-200 hover:from-indigo-800 hover:to-cyan-800"
+              >
+                <Bot className="mr-2 h-4 w-4" />
+                Open Robin Chat
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -1107,13 +1309,39 @@ export function Dashboard({
           </Card>
 
           {/* AI Usage and Plan Limits */}
-          <PlanStatusPanel onUpgrade={onUpgrade} className="md:col-span-1" />
+          <div
+            id="dashboard-messages"
+            className="md:col-span-2 rounded-2xl border-2 border-emerald-200 bg-gradient-to-r from-white via-emerald-50/80 to-cyan-50/70 p-5 shadow-xl shadow-emerald-100/60"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-cyan-600 text-white shadow-lg shadow-emerald-200">
+                  <MessageSquare className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-950">Message Center</h3>
+                  <p className="mt-1 text-sm font-medium text-slate-700">
+                    Open your dedicated inbox for notifications, support tickets, refund updates, and admin messages.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={openMessageCenter}
+                className="w-fit bg-gradient-to-r from-emerald-700 to-cyan-700 font-extrabold text-white shadow-lg shadow-emerald-200 hover:from-emerald-800 hover:to-cyan-800"
+              >
+                <Bell className="mr-2 h-4 w-4" />
+                Open Messages
+                {unreadNotifications.length > 0 && (
+                  <Badge className="ml-2 border-0 bg-rose-600 text-white">
+                    {unreadNotifications.length}
+                  </Badge>
+                )}
+              </Button>
+            </div>
+          </div>
 
-          {/* Notifications Panel */}
-          <NotificationPanel className="md:col-span-1" />
-
-          {/* Support Tickets Panel */}
-          <SupportTicketPanel className="md:col-span-1" />
+          <PlanStatusPanel onUpgrade={onUpgrade} className="md:col-span-2" />
         </div>
       </main>
       <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
@@ -1184,6 +1412,31 @@ export function Dashboard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {latestUnreadNotification && !messageToastDismissed && (
+        <button
+          type="button"
+          onClick={openMessageCenter}
+          className="fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-2xl border-2 border-emerald-200 bg-white p-4 text-left shadow-2xl shadow-emerald-200/70 transition hover:-translate-y-0.5 hover:border-emerald-400"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 text-white shadow-md shadow-emerald-200">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-emerald-700">New message</p>
+                <Badge className="border-0 bg-rose-600 text-white">{unreadNotifications.length}</Badge>
+              </div>
+              <p className="mt-1 line-clamp-1 text-sm font-extrabold text-slate-950">{latestUnreadNotification.title}</p>
+              <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-700">{latestUnreadNotification.message}</p>
+              <span className="mt-2 inline-flex items-center text-sm font-extrabold text-blue-800">
+                Open message center
+                <ArrowRight className="ml-1 h-4 w-4" />
+              </span>
+            </div>
+          </div>
+        </button>
+      )}
     </div>
   );
 }
