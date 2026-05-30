@@ -33,11 +33,14 @@ import {
   XCircle,
   AlertCircle,
   Mail,
-  Sparkles
+  Sparkles,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -50,16 +53,32 @@ import { SEOSettingsTab } from './SEOSettingsTab';
 import { SEOExpansionTab } from './SEOExpansionTab';
 import { AdminRefundDashboard } from '@/components/refunds';
 import { PAID_PLANS } from '@/lib/plans';
-import { fetchAdminSystemStatus, type AdminSystemStatus } from '@/lib/admin/systemStatus';
-import { fetchAdminUsers, type AdminUserSnapshot, type AdminUsersResponse } from '@/lib/admin/users';
+import {
+  fetchAdminAISettings,
+  fetchAdminSystemStatus,
+  fetchAdminWelcomeMessages,
+  saveAdminAISettings,
+  saveAdminWelcomeMessages,
+  type AdminAISettings,
+  type AdminProviderStatus,
+  type AdminSystemStatus,
+  type AdminWelcomeMessageSettings,
+} from '@/lib/admin/systemStatus';
+import { fetchAdminUsers, sendAdminUserMessage, type AdminUserSnapshot, type AdminUsersResponse } from '@/lib/admin/users';
 import { fetchAdminMemoryStatus, type AdminMemoryStatus } from '@/lib/admin/memory';
 import {
   closeTicket,
+  createBroadcast,
   draftSupportTicketReply,
+  getBroadcastMessages,
   getOpenTicketsForAdmin,
+  publishBroadcast,
   replyToTicket,
+  toggleBroadcastStatus,
 } from '@/lib/notifications/api';
-import type { AdminSupportTicket } from '@/lib/notifications';
+import type { AdminSupportTicket, BroadcastAudience, BroadcastMessage } from '@/lib/notifications';
+import { BROADCAST_AUDIENCE_LABELS } from '@/lib/notifications';
+import { RichMessageContent } from '@/components/messages/RichMessageContent';
 import {
   getCandidateDetails,
   getCandidateStats,
@@ -340,29 +359,29 @@ function OverviewTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Users"
-          value="1,247"
-          change="+12%"
+          value="0"
+          change=""
           trend="up"
           icon={Users}
         />
         <StatCard
           title="Active Subscriptions"
-          value="423"
-          change="+8%"
+          value="0"
+          change=""
           trend="up"
           icon={CreditCard}
         />
         <StatCard
           title="Monthly Revenue"
-          value="$4,230"
-          change="+15%"
+          value="$0"
+          change=""
           trend="up"
           icon={DollarSign}
         />
         <StatCard
           title="PDF Downloads"
-          value="3,891"
-          change="+23%"
+          value="0"
+          change=""
           trend="up"
           icon={Activity}
         />
@@ -374,14 +393,8 @@ function OverviewTab() {
             <CardTitle className="text-base">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center gap-3 text-sm">
-                  <div className="w-2 h-2 rounded-full bg-slate-300" />
-                  <span className="text-slate-600 flex-1">New user registration</span>
-                  <span className="text-slate-400 text-xs">2 min ago</span>
-                </div>
-              ))}
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
+              No admin activity yet.
             </div>
           </CardContent>
         </Card>
@@ -394,7 +407,7 @@ function OverviewTab() {
             <div className="space-y-4">
               <HealthItem name="Database" status="healthy" />
               <HealthItem name="Authentication" status="healthy" />
-              <HealthItem name="AI API" status="warning" message="Rate limit at 80%" />
+              <HealthItem name="AI API" status="healthy" />
               <HealthItem name="Storage" status="healthy" />
               <HealthItem name="Email Service" status="healthy" />
             </div>
@@ -412,6 +425,9 @@ function UsersTab() {
   const [selectedUser, setSelectedUser] = useState<AdminUserSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userMessage, setUserMessage] = useState({ title: '', message: '', sendEmail: true });
+  const [userMessageStatus, setUserMessageStatus] = useState<string | null>(null);
+  const [isSendingUserMessage, setIsSendingUserMessage] = useState(false);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -428,6 +444,17 @@ function UsersTab() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (selectedUser) {
+      setUserMessage({
+        title: 'Message from InterviewReady support',
+        message: '',
+        sendEmail: true,
+      });
+      setUserMessageStatus(null);
+    }
+  }, [selectedUser]);
 
   const formatDate = (value?: string | null) => {
     if (!value) return 'Not set';
@@ -453,6 +480,22 @@ function UsersTab() {
     if (planType === 'lifetime') return 'bg-amber-100 text-amber-800 border-amber-200';
     if (planType === 'monthly' || planType === 'interviewPass') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     return 'bg-slate-100 text-slate-700 border-slate-200';
+  };
+
+  const handleSendUserMessage = async () => {
+    if (!selectedUser || !userMessage.title.trim() || !userMessage.message.trim()) return;
+    setIsSendingUserMessage(true);
+    setUserMessageStatus(null);
+    try {
+      await sendAdminUserMessage(selectedUser.id, userMessage);
+      setUserMessageStatus('Message sent to dashboard inbox.');
+      setUserMessage(prev => ({ ...prev, message: '' }));
+      void loadUsers();
+    } catch (err) {
+      setUserMessageStatus(err instanceof Error ? err.message : 'Unable to send message');
+    } finally {
+      setIsSendingUserMessage(false);
+    }
   };
 
   return (
@@ -607,6 +650,41 @@ function UsersTab() {
                   </p>
                 </div>
               </div>
+
+              <div className="rounded-2xl border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-4">
+                <div className="mb-3">
+                  <div className="font-extrabold text-slate-950">Send this user a dashboard message</div>
+                  <p className="text-sm font-semibold text-slate-600">Supports plain text or safe HTML and can also email the user.</p>
+                </div>
+                <div className="space-y-3">
+                  <Input
+                    value={userMessage.title}
+                    onChange={(event) => setUserMessage(prev => ({ ...prev, title: event.target.value }))}
+                    placeholder="Message title"
+                    className="bg-white font-semibold text-slate-950"
+                  />
+                  <textarea
+                    value={userMessage.message}
+                    onChange={(event) => setUserMessage(prev => ({ ...prev, message: event.target.value }))}
+                    placeholder="Write the message or paste simple HTML with links..."
+                    className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Switch
+                        checked={userMessage.sendEmail}
+                        onCheckedChange={(checked) => setUserMessage(prev => ({ ...prev, sendEmail: checked }))}
+                      />
+                      Email user too
+                    </label>
+                    <Button onClick={handleSendUserMessage} disabled={isSendingUserMessage || !userMessage.message.trim()} className="bg-gradient-to-r from-blue-700 to-cyan-700 text-white">
+                      {isSendingUserMessage ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                      Send Message
+                    </Button>
+                  </div>
+                  {userMessageStatus && <p className="text-sm font-bold text-emerald-700">{userMessageStatus}</p>}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -648,7 +726,7 @@ function BillingTab() {
                   <div className="font-medium text-slate-800">{plan.name}</div>
                   <div className="text-sm text-slate-600">{amount} {price?.mode === 'subscription' ? 'recurring monthly' : 'one-time'}</div>
                   <div className="text-xs text-slate-500 mt-1">
-                    PDFs, partner sync, AI practice, provider/model choice
+                    PDFs, partner sync, Robin practice, provider/model choice
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -719,13 +797,19 @@ function BillingTab() {
 }
 
 // Promo Codes Tab
+interface PromoCode {
+  code: string;
+  influencer_name: string;
+  discount_percent: number;
+  is_active: boolean;
+  total_referrals: number;
+  total_signups: number;
+  total_purchases: number;
+  total_paid_users: number;
+}
+
 function PromoCodesTab() {
-  const [promoCodes, setPromoCodes] = useState([
-    { code: 'MARIA10', influencer_name: 'Maria Garcia', discount_percent: 10, is_active: true, total_referrals: 145, total_signups: 23, total_purchases: 8, total_paid_users: 6 },
-    { code: 'ANA20', influencer_name: 'Ana Rodriguez', discount_percent: 20, is_active: true, total_referrals: 89, total_signups: 15, total_purchases: 5, total_paid_users: 4 },
-    { code: 'GREENCARD15', influencer_name: 'Green Card Forum', discount_percent: 15, is_active: true, total_referrals: 234, total_signups: 45, total_purchases: 12, total_paid_users: 10 },
-    { code: 'TEST50', influencer_name: 'Test Influencer', discount_percent: 50, is_active: false, total_referrals: 12, total_signups: 2, total_purchases: 0, total_paid_users: 0 },
-  ]);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newInfluencer, setNewInfluencer] = useState('');
@@ -768,28 +852,28 @@ function PromoCodesTab() {
         <StatCard
           title="Total Referrals"
           value={totalReferrals.toLocaleString()}
-          change="+12%"
+          change=""
           trend="up"
           icon={TrendingUp}
         />
         <StatCard
           title="Total Signups"
           value={totalSignups.toLocaleString()}
-          change="+8%"
+          change=""
           trend="up"
           icon={Users}
         />
         <StatCard
           title="Total Purchases"
           value={totalPurchases.toLocaleString()}
-          change="+15%"
+          change=""
           trend="up"
           icon={DollarSign}
         />
         <StatCard
           title="Paid Users"
           value={totalPaidUsers.toLocaleString()}
-          change="+5%"
+          change=""
           trend="up"
           icon={Activity}
         />
@@ -994,14 +1078,264 @@ function AdsTab() {
   );
 }
 
+const COOLIFY_ENVIRONMENT_URL = import.meta.env.VITE_COOLIFY_ENVIRONMENT_URL
+  || 'http://coolify.peterdowney.tech:8000/project/xfx4ad1mmeym1e2e70n91u4g/environment/o6s3zqos2c585okjqh3vpur0/application/stslm34sk12x83ih2fufqht5/environment-variables';
+
+function buildProviderEnvLines(provider: AdminProviderStatus) {
+  const lines: string[] = [];
+
+  if (provider.apiKeyEnvVar) {
+    lines.push(`${provider.apiKeyEnvVar}=<paste ${provider.label} API key here>`);
+  }
+
+  if (provider.baseUrlEnvVar) {
+    lines.push(`${provider.baseUrlEnvVar}=${provider.baseUrl || 'https://your-openai-compatible-host/v1'}`);
+  }
+
+  if (provider.defaultModelEnvVar) {
+    lines.push(`${provider.defaultModelEnvVar}=${provider.defaultModel || 'auto'}`);
+  }
+
+  lines.push(`AI_DEFAULT_PROVIDER=${provider.provider}`);
+  lines.push('AI_FALLBACK_PROVIDERS=unified,nvidia,deepseek,anthropic,openai');
+
+  return lines;
+}
+
 // AI Config Tab
 function AIConfigTab() {
   const { status, isLoading, error, refresh } = useAdminSystemStatus();
   const memory = useAdminMemoryStatus();
+  const [configureProvider, setConfigureProvider] = useState<AdminProviderStatus | null>(null);
+  const [copyNotice, setCopyNotice] = useState('');
+  const [aiSettings, setAiSettings] = useState<AdminAISettings | null>(null);
+  const [welcomeSettings, setWelcomeSettings] = useState<AdminWelcomeMessageSettings | null>(null);
+  const [settingsNotice, setSettingsNotice] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const envLines = configureProvider ? buildProviderEnvLines(configureProvider) : [];
+  const openCoolifyEnv = () => window.open(COOLIFY_ENVIRONMENT_URL, '_blank', 'noopener,noreferrer');
+  const copyEnvBlock = async () => {
+    if (!configureProvider) return;
+    await navigator.clipboard.writeText(envLines.join('\n'));
+    setCopyNotice('Copied environment variable names.');
+    window.setTimeout(() => setCopyNotice(''), 2500);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.allSettled([fetchAdminAISettings(), fetchAdminWelcomeMessages()]).then((results) => {
+      if (!mounted) return;
+      const aiResult = results[0];
+      const welcomeResult = results[1];
+      if (aiResult.status === 'fulfilled') setAiSettings(aiResult.value);
+      if (welcomeResult.status === 'fulfilled') setWelcomeSettings(welcomeResult.value);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (aiSettings || !status?.ai.settings) return;
+    setAiSettings(status.ai.settings);
+  }, [aiSettings, status]);
+
+  const updateAIProviderSetting = (provider: string, patch: Partial<AdminAISettings['providers'][string]>) => {
+    setAiSettings(prev => {
+      const current = prev || {
+        defaultProvider: status?.ai.defaultProvider || 'unified',
+        defaultModel: status?.ai.defaultModel || 'auto',
+        fallbackProviders: ['unified', 'nvidia', 'deepseek', 'anthropic', 'openai'],
+        providers: {},
+      };
+      return {
+        ...current,
+        providers: {
+          ...current.providers,
+          [provider]: {
+            ...(current.providers[provider] || {}),
+            ...patch,
+          },
+        },
+      };
+    });
+  };
+
+  const saveAISettings = async () => {
+    if (!aiSettings) return;
+    setIsSavingSettings(true);
+    setSettingsNotice('');
+    try {
+      const saved = await saveAdminAISettings(aiSettings);
+      setAiSettings(saved);
+      setSettingsNotice('AI routing settings saved. New Robin requests will use this configuration.');
+      await refresh();
+    } catch (err) {
+      setSettingsNotice(err instanceof Error ? err.message : 'Unable to save AI settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const saveWelcomeSettings = async () => {
+    if (!welcomeSettings) return;
+    setIsSavingSettings(true);
+    setSettingsNotice('');
+    try {
+      setWelcomeSettings(await saveAdminWelcomeMessages(welcomeSettings));
+      setSettingsNotice('Automatic welcome and upgrade messages saved.');
+    } catch (err) {
+      setSettingsNotice(err instanceof Error ? err.message : 'Unable to save welcome messages');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <StatusLoadState isLoading={isLoading} error={error} onRefresh={refresh} />
+
+      <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/70 to-cyan-50/80 shadow-lg shadow-emerald-100/60">
+        <CardHeader>
+          <CardTitle className="text-base">Editable LLM Routing</CardTitle>
+          <CardDescription>Set Robin's live provider, model, fallback order, and API keys without opening Coolify.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {aiSettings && (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label className="font-bold text-slate-900">Default provider</Label>
+                  <select
+                    value={aiSettings.defaultProvider || status?.ai.defaultProvider || 'unified'}
+                    onChange={(event) => setAiSettings(prev => prev ? { ...prev, defaultProvider: event.target.value } : prev)}
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950"
+                  >
+                    {(status?.ai.providers || []).map(provider => (
+                      <option key={provider.provider} value={provider.provider}>{provider.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold text-slate-900">Default model</Label>
+                  <Input
+                    value={aiSettings.defaultModel || status?.ai.defaultModel || 'auto'}
+                    onChange={(event) => setAiSettings(prev => prev ? { ...prev, defaultModel: event.target.value } : prev)}
+                    className="bg-white font-semibold text-slate-950"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold text-slate-900">Fallback order</Label>
+                  <Input
+                    value={(aiSettings.fallbackProviders?.length ? aiSettings.fallbackProviders : ['unified', 'nvidia', 'deepseek', 'anthropic', 'openai']).join(', ')}
+                    onChange={(event) => setAiSettings(prev => prev ? {
+                      ...prev,
+                      fallbackProviders: event.target.value.split(',').map(item => item.trim()).filter(Boolean),
+                    } : prev)}
+                    className="bg-white font-semibold text-slate-950"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                {(status?.ai.providers || []).map(provider => {
+                  const providerSetting = aiSettings.providers?.[provider.provider] || {};
+                  return (
+                    <div key={provider.provider} className="space-y-3 rounded-2xl border border-slate-200 bg-white/90 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="font-extrabold text-slate-950">{provider.label}</h4>
+                          <p className="text-xs font-semibold text-slate-600">{provider.openAICompatible ? 'OpenAI-compatible gateway' : 'Native provider'}</p>
+                        </div>
+                        <ConfigBadge configured={Boolean(provider.configured || providerSetting.apiKeyConfigured || providerSetting.apiKey)} />
+                      </div>
+                      {provider.openAICompatible && (
+                        <Input
+                          value={providerSetting.baseUrl ?? provider.baseUrl ?? ''}
+                          onChange={(event) => updateAIProviderSetting(provider.provider, { baseUrl: event.target.value })}
+                          placeholder="Base URL ending in /v1"
+                          className="bg-white font-semibold text-slate-950"
+                        />
+                      )}
+                      <Input
+                        type="password"
+                        value={providerSetting.apiKey || ''}
+                        onChange={(event) => updateAIProviderSetting(provider.provider, {
+                          apiKey: event.target.value,
+                          keepExistingApiKey: !event.target.value && Boolean(providerSetting.apiKeyConfigured),
+                        })}
+                        placeholder={providerSetting.apiKeyConfigured ? `Existing key ${providerSetting.apiKeyMasked || 'saved'} - leave blank to keep` : 'Paste API key'}
+                        className="bg-white font-semibold text-slate-950"
+                      />
+                      <Input
+                        value={providerSetting.defaultModel ?? provider.defaultModel ?? ''}
+                        onChange={(event) => updateAIProviderSetting(provider.provider, { defaultModel: event.target.value })}
+                        placeholder="Default model"
+                        className="bg-white font-semibold text-slate-950"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-700">
+                  Current live default: {status?.ai.defaultProvider || 'unknown'} / {status?.ai.defaultModel || 'unknown'}
+                </p>
+                <Button onClick={saveAISettings} disabled={isSavingSettings} className="bg-gradient-to-r from-emerald-700 to-cyan-700 text-white">
+                  {isSavingSettings ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Save LLM Settings
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {welcomeSettings && (
+        <Card className="border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/70 to-amber-50/60 shadow-lg shadow-blue-100/60">
+          <CardHeader>
+            <CardTitle className="text-base">Automatic Dashboard Messages</CardTitle>
+            <CardDescription>Send a welcome message after signup and an unlock message after upgrade.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-2xl border border-blue-100 bg-white/90 p-4">
+                <label className="flex items-center justify-between gap-3 font-bold text-slate-900">
+                  Signup welcome
+                  <Switch checked={welcomeSettings.signupEnabled} onCheckedChange={(checked) => setWelcomeSettings(prev => prev ? { ...prev, signupEnabled: checked } : prev)} />
+                </label>
+                <Input value={welcomeSettings.signupTitle} onChange={(event) => setWelcomeSettings(prev => prev ? { ...prev, signupTitle: event.target.value } : prev)} className="font-semibold text-slate-950" />
+                <textarea value={welcomeSettings.signupMessage} onChange={(event) => setWelcomeSettings(prev => prev ? { ...prev, signupMessage: event.target.value } : prev)} className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950" />
+              </div>
+              <div className="space-y-3 rounded-2xl border border-amber-100 bg-white/90 p-4">
+                <label className="flex items-center justify-between gap-3 font-bold text-slate-900">
+                  Upgrade welcome
+                  <Switch checked={welcomeSettings.upgradeEnabled} onCheckedChange={(checked) => setWelcomeSettings(prev => prev ? { ...prev, upgradeEnabled: checked } : prev)} />
+                </label>
+                <Input value={welcomeSettings.upgradeTitle} onChange={(event) => setWelcomeSettings(prev => prev ? { ...prev, upgradeTitle: event.target.value } : prev)} className="font-semibold text-slate-950" />
+                <textarea value={welcomeSettings.upgradeMessage} onChange={(event) => setWelcomeSettings(prev => prev ? { ...prev, upgradeMessage: event.target.value } : prev)} className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                <Switch checked={welcomeSettings.sendEmail} onCheckedChange={(checked) => setWelcomeSettings(prev => prev ? { ...prev, sendEmail: checked } : prev)} />
+                Also send email alerts
+              </label>
+              <Button onClick={saveWelcomeSettings} disabled={isSavingSettings} className="bg-gradient-to-r from-blue-700 to-cyan-700 text-white">
+                Save Automatic Messages
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {settingsNotice && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          {settingsNotice}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -1019,18 +1353,72 @@ function AIConfigTab() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {(status?.ai.providers || []).map((provider) => (
-              <div key={provider.provider} className="rounded-lg border border-slate-200 p-4">
+              <div
+                key={provider.provider}
+                className={cn(
+                  'rounded-xl border p-4 shadow-sm',
+                  provider.configured
+                    ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50'
+                    : 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-slate-50'
+                )}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h4 className="font-medium text-slate-800">{provider.label}</h4>
-                    <p className="text-sm text-slate-600 mt-1">{provider.defaultModel}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-semibold text-slate-950">{provider.label}</h4>
+                      {provider.openAICompatible && (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                          OpenAI-compatible
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-700 mt-1">{provider.defaultModel}</p>
+                    {provider.baseUrl && (
+                      <p className="mt-2 truncate text-xs text-slate-600" title={provider.baseUrl}>
+                        Base URL: {provider.baseUrl}
+                      </p>
+                    )}
                   </div>
-                  <ConfigBadge configured={provider.configured} />
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <ConfigBadge configured={provider.configured} />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={provider.configured ? 'outline' : 'default'}
+                      onClick={() => {
+                        setConfigureProvider(provider);
+                        setCopyNotice('');
+                      }}
+                      className={cn(
+                        'font-semibold',
+                        !provider.configured && 'bg-blue-700 text-white hover:bg-blue-800'
+                      )}
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                      Configure
+                    </Button>
+                  </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+                <div className="mt-4 flex items-center justify-between text-xs text-slate-600">
                   <span>{provider.modelCount} models available</span>
-                  <span>{provider.configured ? 'Enabled for AI practice' : 'Set API key in Coolify'}</span>
+                  <span>
+                    {provider.configured
+                        ? 'Enabled for Robin practice'
+                      : provider.openAICompatible && !provider.baseUrlConfigured
+                        ? 'Add key and base URL above'
+                        : 'Add API key above'}
+                  </span>
                 </div>
+                {(provider.apiKeyEnvVar || provider.baseUrlEnvVar || provider.defaultModelEnvVar) && (
+                  <div className="mt-3 grid grid-cols-1 gap-1 rounded-lg bg-white/80 p-3 text-xs text-slate-700 ring-1 ring-slate-200">
+                    {provider.apiKeyEnvVar && <span>Key: <span className="font-mono">{provider.apiKeyEnvVar}</span></span>}
+                    {provider.baseUrlEnvVar && <span>Base URL: <span className="font-mono">{provider.baseUrlEnvVar}</span></span>}
+                    {provider.defaultModelEnvVar && <span>Default model: <span className="font-mono">{provider.defaultModelEnvVar}</span></span>}
+                  </div>
+                )}
+                {provider.configurationHint && (
+                  <p className="mt-3 text-xs text-slate-600">{provider.configurationHint}</p>
+                )}
               </div>
             ))}
 
@@ -1056,15 +1444,106 @@ function AIConfigTab() {
 
           <Separator />
 
+          <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-blue-600 p-2 text-white">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-slate-950">Add More LLM Gateways</h4>
+                <p className="text-sm text-slate-700">
+                  Use the editable routing panel above for Robin's live providers, models, keys, and fallback order.
+                  Brand-new custom gateway types can still be registered with
+                  <span className="font-mono"> AI_OPENAI_COMPATIBLE_PROVIDERS</span> when needed.
+                </p>
+                <div className="rounded-lg bg-white/85 p-3 text-xs text-slate-700 ring-1 ring-blue-100">
+                  <div><span className="font-mono">AI_FALLBACK_PROVIDERS</span>: unified,nvidia,deepseek,anthropic,openai</div>
+                  <div><span className="font-mono">AI_OPENAI_COMPATIBLE_PROVIDERS</span>: provider id, label, base URL env, key env, default model</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <h4 className="font-medium text-slate-700">How settings are applied</h4>
             <p className="text-sm text-slate-600">
-              AI keys and model defaults are production secrets, so this portal reports whether they are present.
-              Add or change keys in Coolify environment variables, redeploy, then refresh this page.
+              Admin-saved routing settings override environment defaults immediately for new Robin requests.
+              If a key, model, or base URL is left blank here, the server falls back to the matching runtime variable.
             </p>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!configureProvider} onOpenChange={(open) => !open && setConfigureProvider(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-extrabold text-slate-950">
+              Configure {configureProvider?.label}
+            </DialogTitle>
+            <DialogDescription className="text-slate-700">
+              Use the Editable LLM Routing card for normal key and model changes. These environment variables remain available as a secure fallback.
+            </DialogDescription>
+          </DialogHeader>
+
+          {configureProvider && (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                <div className="font-extrabold">Fallback environment setup</div>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">
+                  <li>For day-to-day changes, edit this provider in the Editable LLM Routing card above.</li>
+                  <li>If you prefer environment secrets, open this app in Coolify.</li>
+                  <li>Go to <span className="font-semibold">Configuration</span> then <span className="font-semibold">Environment Variables</span>.</li>
+                  <li>Add or update the variables below, make them available at runtime, save, then redeploy.</li>
+                </ol>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-extrabold text-slate-950">Variables to set</div>
+                    <div className="text-sm text-slate-600">Paste your real key in place of the placeholder.</div>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={copyEnvBlock}>
+                    <Copy className="h-4 w-4" />
+                    Copy block
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {envLines.map((line) => (
+                    <code
+                      key={line}
+                      className="block overflow-x-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-950"
+                    >
+                      {line}
+                    </code>
+                  ))}
+                </div>
+                {copyNotice && <div className="mt-3 text-sm font-semibold text-emerald-700">{copyNotice}</div>}
+              </div>
+
+              {configureProvider.openAICompatible && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+                  <div className="font-extrabold">OpenAI-compatible gateway note</div>
+                  <p className="mt-1">
+                    For your unified LLM proxy, keep the base URL ending in <span className="font-mono font-bold">/v1</span>.
+                    Use <span className="font-mono font-bold">auto</span> as the default model if the gateway routes models itself.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button type="button" onClick={openCoolifyEnv} className="bg-slate-950 text-white hover:bg-slate-800">
+                  <ExternalLink className="h-4 w-4" />
+                  Open Coolify Environment Variables
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setConfigureProvider(null)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -1223,8 +1702,8 @@ function SystemTab() {
             the Stripe webhook is what updates the user subscription from trial to paid in the database.
           </div>
           <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-600">
-            This app intentionally does not accept secret API keys in the browser admin UI. Store secrets in Coolify,
-            redeploy, then confirm the status here.
+            Robin's provider keys and fallback models can be managed in the AI API Configuration tab. Coolify environment
+            variables are still supported as a fallback for teams that prefer infrastructure-managed secrets.
           </div>
         </CardContent>
       </Card>
@@ -1234,100 +1713,185 @@ function SystemTab() {
 
 // Broadcasts Tab
 function BroadcastsTab() {
-  const [broadcasts, setBroadcasts] = useState([
-    { id: '1', title: 'New Feature: AI Interview Mode', message: 'Try our new AI-powered interview practice!', audience_type: 'all_users', is_active: true, created_at: '2024-03-15T10:00:00Z', sent_count: 1234 },
-    { id: '2', title: '50% Off Spring Sale', message: 'Get 50% off premium plans this week only!', audience_type: 'trial_users', is_active: false, created_at: '2024-03-10T10:00:00Z', sent_count: 0 },
-  ]);
+  const [broadcasts, setBroadcasts] = useState<BroadcastMessage[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [newBroadcast, setNewBroadcast] = useState({
     title: '',
     message: '',
-    audience_type: 'all_users' as 'all_users' | 'trial_users' | 'premium_users' | 'expired_users' | 'free_users',
+    audienceType: 'all_users' as BroadcastAudience,
+    scheduledAt: '',
+    sendEmail: true,
   });
 
-  const audienceLabels: Record<string, string> = {
-    all_users: 'All Users',
-    trial_users: 'Trial Users',
-    premium_users: 'Premium Users',
-    expired_users: 'Expired Subscriptions',
-    free_users: 'Free Users',
-  };
-
-  const handleToggleActive = (id: string) => {
-    setBroadcasts(prev => prev.map(b =>
-      b.id === id ? { ...b, is_active: !b.is_active } : b
-    ));
-  };
-
-  const handleAddBroadcast = () => {
-    if (newBroadcast.title && newBroadcast.message) {
-      setBroadcasts(prev => [...prev, {
-        id: Date.now().toString(),
-        title: newBroadcast.title,
-        message: newBroadcast.message,
-        audience_type: newBroadcast.audience_type,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        sent_count: 0,
-      }]);
-      setNewBroadcast({ title: '', message: '', audience_type: 'all_users' });
-      setShowAddForm(false);
+  const loadBroadcasts = async () => {
+    setIsLoading(true);
+    setBroadcastError(null);
+    const result = await getBroadcastMessages();
+    if (result.success && result.data) {
+      setBroadcasts(result.data);
+    } else {
+      setBroadcastError(result.error || 'Unable to load broadcasts');
     }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadBroadcasts();
+  }, []);
+
+  const scheduleDate = newBroadcast.scheduledAt ? newBroadcast.scheduledAt.slice(0, 10) : '';
+  const scheduleTime = newBroadcast.scheduledAt ? newBroadcast.scheduledAt.slice(11, 16) : '';
+  const updateSchedulePart = (part: 'date' | 'time', value: string) => {
+    const nextDate = part === 'date' ? value : scheduleDate;
+    const nextTime = part === 'time' ? value : scheduleTime;
+    setNewBroadcast(prev => ({
+      ...prev,
+      scheduledAt: nextDate ? `${nextDate}T${nextTime || '09:00'}` : '',
+    }));
+  };
+
+  const handleToggleActive = async (broadcast: BroadcastMessage) => {
+    setBroadcasts(prev => prev.map(b =>
+      b.id === broadcast.id ? { ...b, isActive: !b.isActive } : b
+    ));
+    const result = await toggleBroadcastStatus(broadcast.id, !broadcast.isActive);
+    if (!result.success) {
+      setBroadcastError(result.error || 'Unable to update broadcast');
+      void loadBroadcasts();
+    }
+  };
+
+  const handleAddBroadcast = async () => {
+    if (!newBroadcast.title.trim() || !newBroadcast.message.trim()) return;
+
+    setIsSaving(true);
+    setBroadcastError(null);
+    const scheduledAt = newBroadcast.scheduledAt ? new Date(newBroadcast.scheduledAt).toISOString() : null;
+    const publishNow = !scheduledAt || new Date(scheduledAt).getTime() <= Date.now();
+    const result = await createBroadcast({
+      title: newBroadcast.title,
+      message: newBroadcast.message,
+      audienceType: newBroadcast.audienceType,
+      scheduledAt,
+      sendEmail: newBroadcast.sendEmail,
+      publishNow,
+    });
+
+    if (result.success && result.data) {
+      setBroadcasts(prev => [result.data!, ...prev.filter(broadcast => broadcast.id !== result.data!.id)]);
+      setNewBroadcast({ title: '', message: '', audienceType: 'all_users', scheduledAt: '', sendEmail: true });
+      setShowAddForm(false);
+    } else {
+      setBroadcastError(result.error || 'Unable to create broadcast');
+    }
+    setIsSaving(false);
+  };
+
+  const handlePublish = async (broadcastId: string) => {
+    setBroadcastError(null);
+    const result = await publishBroadcast(broadcastId);
+    if (!result.success) {
+      setBroadcastError(result.error || 'Unable to publish broadcast');
+      return;
+    }
+    void loadBroadcasts();
   };
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
+      <Card className="border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/80 to-emerald-50/70 shadow-xl shadow-blue-100/60">
+        <CardHeader className="border-b border-blue-100">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">Broadcast Messages</CardTitle>
-              <CardDescription>Send announcements to user groups</CardDescription>
+              <CardDescription>Send rich HTML, links, and linked-image messages to free or pro member groups.</CardDescription>
             </div>
-            <Button onClick={() => setShowAddForm(!showAddForm)} className="bg-slate-700 hover:bg-slate-800">
+            <Button onClick={() => setShowAddForm(!showAddForm)} className="bg-gradient-to-r from-blue-700 to-cyan-700 text-white">
               <Plus className="w-4 h-4 mr-2" />
               New Broadcast
             </Button>
           </div>
         </CardHeader>
         <CardContent>
+          {broadcastError && (
+            <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+              {broadcastError}
+            </div>
+          )}
           {showAddForm && (
-            <div className="mb-6 p-4 border rounded-lg bg-slate-50 space-y-4">
-              <h4 className="font-medium text-slate-700">Create New Broadcast</h4>
+            <div className="mb-6 space-y-4 rounded-2xl border-2 border-cyan-200 bg-white p-4 shadow-sm">
+              <h4 className="font-extrabold text-slate-950">Create New Broadcast</h4>
               <div className="space-y-2">
-                <Label>Title</Label>
+                <Label className="font-bold text-slate-900">Title</Label>
                 <Input
                   placeholder="e.g., New Feature Announcement"
                   value={newBroadcast.title}
                   onChange={(e) => setNewBroadcast(prev => ({ ...prev, title: e.target.value }))}
+                  className="border-slate-300 bg-white font-semibold text-slate-950"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Message</Label>
+                <Label className="font-bold text-slate-900">Message HTML or plain text</Label>
                 <textarea
-                  className="w-full min-h-[100px] px-3 py-2 rounded-md border border-slate-200 text-sm"
-                  placeholder="Enter your message..."
+                  className="min-h-[150px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={'Use plain text or HTML, e.g. <p>New guide is live</p><a href="https://...">Open it</a><img src="https://..." alt="Preview">'}
                   value={newBroadcast.message}
                   onChange={(e) => setNewBroadcast(prev => ({ ...prev, message: e.target.value }))}
                 />
+                <p className="text-xs font-semibold text-slate-600">
+                  Allowed in user inbox: links, basic formatting, lists, quotes, code blocks, and linked images.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Target Audience</Label>
-                <select
-                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
-                  value={newBroadcast.audience_type}
-                  onChange={(e) => setNewBroadcast(prev => ({ ...prev, audience_type: e.target.value as typeof newBroadcast.audience_type }))}
-                >
-                  <option value="all_users">All Users</option>
-                  <option value="trial_users">Trial Users</option>
-                  <option value="premium_users">Premium Users</option>
-                  <option value="expired_users">Expired Subscriptions</option>
-                  <option value="free_users">Free Users</option>
-                </select>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label className="font-bold text-slate-900">Target Audience</Label>
+                  <select
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950"
+                    value={newBroadcast.audienceType}
+                    onChange={(e) => setNewBroadcast(prev => ({ ...prev, audienceType: e.target.value as BroadcastAudience }))}
+                  >
+                    <option value="all_users">All Users</option>
+                    <option value="free_users">Free Members</option>
+                    <option value="trial_users">Trial Users</option>
+                    <option value="premium_users">Pro / Paid Members</option>
+                    <option value="expired_users">Expired Subscriptions</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-bold text-slate-900">Schedule</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={(e) => updateSchedulePart('date', e.target.value)}
+                      className="border-slate-300 bg-white font-semibold text-slate-950"
+                    />
+                    <Input
+                      type="time"
+                      value={scheduleTime}
+                      onChange={(e) => updateSchedulePart('time', e.target.value)}
+                      className="border-slate-300 bg-white font-semibold text-slate-950"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <div>
+                    <Label className="font-bold text-slate-900">Email users too</Label>
+                    <p className="text-xs font-semibold text-slate-600">Sends a personal email alert.</p>
+                  </div>
+                  <Switch
+                    checked={newBroadcast.sendEmail}
+                    onCheckedChange={(checked) => setNewBroadcast(prev => ({ ...prev, sendEmail: checked }))}
+                  />
+                </div>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleAddBroadcast} className="bg-slate-700 hover:bg-slate-800">
-                  Create Broadcast
+                <Button onClick={handleAddBroadcast} disabled={isSaving} className="bg-gradient-to-r from-blue-700 to-cyan-700 text-white">
+                  {isSaving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
+                  {newBroadcast.scheduledAt ? 'Schedule Broadcast' : 'Send Broadcast'}
                 </Button>
                 <Button variant="outline" onClick={() => setShowAddForm(false)}>
                   Cancel
@@ -1336,8 +1900,13 @@ function BroadcastsTab() {
             </div>
           )}
 
-          <div className="border rounded-lg">
-            {broadcasts.length === 0 ? (
+          <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white">
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 p-8 text-sm font-semibold text-slate-600">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Loading broadcasts...
+              </div>
+            ) : broadcasts.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <Megaphone className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="font-medium">No broadcasts yet</p>
@@ -1349,22 +1918,35 @@ function BroadcastsTab() {
                   <div key={broadcast.id} className="p-4 flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-slate-800">{broadcast.title}</h4>
-                        <Badge variant={broadcast.is_active ? 'default' : 'secondary'}>
-                          {broadcast.is_active ? 'Active' : 'Inactive'}
+                        <h4 className="font-extrabold text-slate-950">{broadcast.title}</h4>
+                        <Badge variant={broadcast.isActive ? 'default' : 'secondary'}>
+                          {broadcast.isActive ? 'Active' : 'Inactive'}
                         </Badge>
+                        {broadcast.sendEmail && (
+                          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                            Email on
+                          </Badge>
+                        )}
                       </div>
-                      <p className="text-sm text-slate-600 mt-1">{broadcast.message}</p>
+                      <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                        <RichMessageContent content={broadcast.message} />
+                      </div>
                       <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span>Audience: {audienceLabels[broadcast.audience_type]}</span>
-                        <span>Sent to: {broadcast.sent_count.toLocaleString()} users</span>
-                        <span>Created: {new Date(broadcast.created_at).toLocaleDateString()}</span>
+                        <span>Audience: {BROADCAST_AUDIENCE_LABELS[broadcast.audienceType]}</span>
+                        <span>Sent to: {broadcast.sentCount.toLocaleString()} users</span>
+                        <span>Created: {new Date(broadcast.createdAt).toLocaleDateString()}</span>
+                        {broadcast.scheduledAt && <span>Scheduled: {new Date(broadcast.scheduledAt).toLocaleString()}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {broadcast.sentCount === 0 && (
+                        <Button variant="outline" size="sm" onClick={() => handlePublish(broadcast.id)}>
+                          Send now
+                        </Button>
+                      )}
                       <Switch
-                        checked={broadcast.is_active}
-                        onCheckedChange={() => handleToggleActive(broadcast.id)}
+                        checked={broadcast.isActive}
+                        onCheckedChange={() => handleToggleActive(broadcast)}
                       />
                       <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
                         <Trash2 className="w-4 h-4" />
@@ -1755,7 +2337,7 @@ function LiveAnswerExamplesTab() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Answer Example Candidates</CardTitle>
-              <CardDescription>Sanitized answers captured from AI practice for manual memory-bank review.</CardDescription>
+              <CardDescription>Sanitized answers captured from Robin practice for manual memory-bank review.</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={loadCandidates}>
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -1902,9 +2484,11 @@ function StatCard({ title, value, change, trend, icon: Icon }: {
           <div className="p-2 bg-slate-100 rounded-lg">
             <Icon className="w-5 h-5 text-slate-600" />
           </div>
-          <Badge variant={trend === 'up' ? 'default' : 'destructive'} className="text-xs">
-            {change}
-          </Badge>
+          {change && (
+            <Badge variant={trend === 'up' ? 'default' : 'destructive'} className="text-xs">
+              {change}
+            </Badge>
+          )}
         </div>
         <div className="mt-4">
           <div className="text-2xl font-medium text-slate-800">{value}</div>
