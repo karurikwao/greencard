@@ -129,6 +129,8 @@ import { BillingSuccessPage } from '@/pages/billing/BillingSuccessPage';
 import { BillingCancelPage } from '@/pages/billing/BillingCancelPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { AccountSettingsPage } from '@/pages/AccountSettingsPage';
+import { MessagesPage } from '@/pages/MessagesPage';
+import { RobinPage } from '@/pages/RobinPage';
 import { usePricing } from '@/hooks/usePricing';
 import { cn } from '@/lib/utils';
 import { AnnouncementBanner, TrustSnippets, ContentBlocks } from '@/components/content';
@@ -139,7 +141,7 @@ import { SecurePDFDownload } from '@/components/paywall';
 import './App.css';
 
 // ==================== ROUTING ====================
-type Page = 'home' | 'privacy' | 'terms' | 'contact' | 'dashboard' | 'question' | 'readiness' | 'stress-review' | 'invite' | 'topic' | 'situation' | 'top-questions' | 'question-database' | 'authority-preparation' | 'ai-interview' | 'pricing' | 'billing-success' | 'billing-cancel' | 'refund-policy' | 'terms-of-service' | 'pillar' | 'supporting' | 'interview-topics' | 'reset-password' | 'account';
+type Page = 'home' | 'privacy' | 'terms' | 'contact' | 'dashboard' | 'messages' | 'robin' | 'timeline-builder' | 'question' | 'readiness' | 'stress-review' | 'invite' | 'topic' | 'situation' | 'top-questions' | 'question-database' | 'authority-preparation' | 'ai-interview' | 'pricing' | 'billing-success' | 'billing-cancel' | 'refund-policy' | 'terms-of-service' | 'pillar' | 'supporting' | 'interview-topics' | 'reset-password' | 'account';
 
 function usePage() {
   const [page, setPage] = useState<Page>('home');
@@ -183,6 +185,9 @@ function usePage() {
     else if (path === '/refund-policy') setPage('refund-policy');
     else if (path === '/terms-of-service') setPage('terms-of-service');
     else if (path === '/dashboard') setPage('dashboard');
+    else if (path === '/messages') setPage('messages');
+    else if (path === '/robin') setPage('robin');
+    else if (path === '/relationship-timeline-builder') setPage('timeline-builder');
     else if (path === '/readiness') setPage('readiness');
     else if (path === '/stress-review') setPage('stress-review');
     else if (path === '/marriage-interview-questions') setPage('top-questions');
@@ -262,13 +267,16 @@ function usePage() {
     else if (newPage === 'interview-topics') path = '/interview-topics';
     else if (newPage === 'ai-interview') path = '/mock-interview';
     else if (newPage === 'pricing') path = '/pricing';
+    else if (newPage === 'messages') path = '/messages';
+    else if (newPage === 'robin') path = '/robin';
+    else if (newPage === 'timeline-builder') path = '/relationship-timeline-builder';
     else if (newPage === 'billing-success') path = '/billing/success';
     else if (newPage === 'billing-cancel') path = '/billing/cancel';
     else if (newPage === 'reset-password') path = '/reset-password';
     else if (newPage === 'account') path = '/account';
     else path = `/${newPage}`;
     window.history.pushState({}, '', path);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: newPage === 'pricing' ? 'auto' : 'smooth' });
   };
 
   return { page, navigate, setPage, questionSlug, inviteCode, topicSlug, situationSlug, clusterSlug, supportingSlug };
@@ -494,6 +502,44 @@ function getTopicAccent(topicId: string) {
   return topicAccentThemes[hash % topicAccentThemes.length];
 }
 
+const categoryFilterThemes: Record<string, { active: string; idle: string; icon: string }> = {
+  'home-living': {
+    active: 'border-emerald-400 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-200',
+    idle: 'border-emerald-200 bg-emerald-50/90 text-emerald-950 hover:border-emerald-400 hover:bg-emerald-100 hover:shadow-md hover:shadow-emerald-100',
+    icon: 'bg-emerald-500 text-white',
+  },
+  'daily-routine': {
+    active: 'border-blue-400 bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-200',
+    idle: 'border-blue-200 bg-blue-50/90 text-blue-950 hover:border-blue-400 hover:bg-blue-100 hover:shadow-md hover:shadow-blue-100',
+    icon: 'bg-blue-600 text-white',
+  },
+  relationship: {
+    active: 'border-rose-400 bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-lg shadow-rose-200',
+    idle: 'border-rose-200 bg-rose-50/90 text-rose-950 hover:border-rose-400 hover:bg-rose-100 hover:shadow-md hover:shadow-rose-100',
+    icon: 'bg-rose-600 text-white',
+  },
+  financial: {
+    active: 'border-amber-400 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-200',
+    idle: 'border-amber-200 bg-amber-50/90 text-amber-950 hover:border-amber-400 hover:bg-amber-100 hover:shadow-md hover:shadow-amber-100',
+    icon: 'bg-amber-500 text-white',
+  },
+  'family-social': {
+    active: 'border-purple-400 bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-200',
+    idle: 'border-purple-200 bg-purple-50/90 text-purple-950 hover:border-purple-400 hover:bg-purple-100 hover:shadow-md hover:shadow-purple-100',
+    icon: 'bg-purple-600 text-white',
+  },
+  'tech-communication': {
+    active: 'border-cyan-400 bg-gradient-to-r from-cyan-600 to-sky-600 text-white shadow-lg shadow-cyan-200',
+    idle: 'border-cyan-200 bg-cyan-50/90 text-cyan-950 hover:border-cyan-400 hover:bg-cyan-100 hover:shadow-md hover:shadow-cyan-100',
+    icon: 'bg-cyan-600 text-white',
+  },
+  'special-practice': {
+    active: 'border-red-400 bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-200',
+    idle: 'border-red-200 bg-red-50/90 text-red-950 hover:border-red-400 hover:bg-red-100 hover:shadow-md hover:shadow-red-100',
+    icon: 'bg-red-600 text-white',
+  },
+};
+
 // ==================== COMPONENTS ====================
 
 function Navigation({
@@ -592,7 +638,7 @@ function Navigation({
                   className="bg-gradient-to-r from-emerald-600 to-cyan-600 font-extrabold text-white shadow-lg shadow-emerald-900/20 hover:from-emerald-700 hover:to-cyan-700"
                 >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Free account
+                  Sign up
                 </Button>
               </>
             )}
@@ -632,7 +678,7 @@ function Navigation({
                 <div className="grid grid-cols-1 gap-2 px-4">
                   <Button onClick={() => { setIsOpen(false); onAuthClick('signup'); }} className="w-full bg-gradient-to-r from-emerald-600 to-cyan-600 font-extrabold text-white">
                     <UserPlus className="mr-2 h-4 w-4" />
-                    Create free account
+                    Sign up
                   </Button>
                   <Button onClick={() => { setIsOpen(false); onAuthClick('login'); }} variant="outline" className="w-full font-extrabold">
                     <LogIn className="mr-2 h-4 w-4" />
@@ -689,7 +735,7 @@ function Hero({ onSignupClick }: { onSignupClick: () => void }) {
               className="bg-gradient-to-r from-emerald-600 to-cyan-600 text-white px-8 shadow-lg shadow-emerald-900/20 hover:from-emerald-700 hover:to-cyan-700 transition-all font-extrabold"
             >
               <UserPlus className="mr-2 h-5 w-5" />
-              Create free account
+              Sign up
             </Button>
             <Button 
               onClick={scrollToTopics} 
@@ -979,21 +1025,55 @@ function TopicsSection({
           )}
         </div>
 
-        <div className="mb-8 space-y-4">
-          <div className="relative max-w-md mx-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-            <Input placeholder="Search topics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+        <div className="mb-10 rounded-3xl border-2 border-white bg-gradient-to-br from-white via-blue-50/95 to-emerald-50/90 p-4 shadow-xl shadow-blue-100/70 ring-1 ring-blue-100 sm:p-5 lg:p-6">
+          <div className="relative mx-auto max-w-2xl">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-700" />
+            <Input
+              placeholder="Search topics..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-12 rounded-2xl border-2 border-blue-200 bg-white pl-12 pr-24 text-base font-bold text-slate-950 shadow-inner placeholder:text-slate-500 focus-visible:border-blue-500 focus-visible:ring-4 focus-visible:ring-blue-200"
+            />
+            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-slate-900 px-3 py-1 text-xs font-extrabold text-white shadow-sm">
+              {filteredTopics.length}
+            </span>
           </div>
-          
-          <div className="flex flex-wrap justify-center gap-2">
-            <button onClick={() => setSelectedCategory(null)} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${selectedCategory === null ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>
-              All Topics
+
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`min-h-[3.5rem] rounded-2xl border-2 px-3 py-2 text-left text-xs font-extrabold leading-tight transition-all duration-200 sm:text-sm ${
+                selectedCategory === null
+                  ? 'border-blue-500 bg-gradient-to-r from-blue-700 to-indigo-600 text-white shadow-lg shadow-blue-200'
+                  : 'border-slate-200 bg-white text-slate-950 hover:border-blue-300 hover:bg-blue-50 hover:shadow-md hover:shadow-blue-100'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl ${selectedCategory === null ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'}`}>
+                  <BookOpen className="h-4 w-4" />
+                </span>
+                <span>All Topics</span>
+              </span>
             </button>
-            {categories.map(cat => (
-              <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${selectedCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>
-                {cat.name}
-              </button>
-            ))}
+            {categories.map(cat => {
+              const IconComponent = getIcon(cat.icon);
+              const theme = categoryFilterThemes[cat.id];
+              const isActive = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`min-h-[3.5rem] rounded-2xl border-2 px-3 py-2 text-left text-xs font-extrabold leading-tight transition-all duration-200 sm:text-sm ${isActive ? theme.active : theme.idle}`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl ${isActive ? 'bg-white/20 text-white' : theme.icon}`}>
+                      <IconComponent className="h-4 w-4" />
+                    </span>
+                    <span>{cat.name}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1019,36 +1099,36 @@ function TopicsSection({
 
         {/* Topic Detail Dialog - Preserved for PDF/Checklist access */}
         <Dialog open={!!selectedTopic} onOpenChange={() => setSelectedTopic(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95%] sm:w-auto p-4 sm:p-6">
+          <DialogContent className="topic-detail-dialog max-w-2xl max-h-[90vh] overflow-y-auto w-[95%] sm:w-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl text-slate-950 font-extrabold">
                 {selectedTopic && (() => {
                   const IconComponent = getIcon(selectedTopic.icon);
                   return <IconComponent className="h-5 w-5" />;
                 })()}
                 {selectedTopic?.title}
               </DialogTitle>
-              <DialogDescription>{selectedTopic?.description}</DialogDescription>
+              <DialogDescription className="topic-dialog-description text-slate-950 font-bold leading-relaxed">{selectedTopic?.description}</DialogDescription>
             </DialogHeader>
             
             {selectedTopic && (
               <Tabs defaultValue="sample" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 bg-slate-100 p-1 h-auto">
+                <TabsList className="topic-modal-tabs grid w-full grid-cols-3 bg-slate-100 p-1 h-auto">
                   <TabsTrigger 
                     value="sample" 
-                    className="tab-sample text-xs sm:text-sm py-2 px-1 font-bold"
+                    className="topic-modal-tab tab-sample text-xs sm:text-sm py-2 px-1 font-bold"
                   >
                     Sample Answers
                   </TabsTrigger>
                   <TabsTrigger 
                     value="checklist"
-                    className="tab-checklist text-xs sm:text-sm py-2 px-1 font-bold"
+                    className="topic-modal-tab tab-checklist text-xs sm:text-sm py-2 px-1 font-bold"
                   >
                     Checklist
                   </TabsTrigger>
                   <TabsTrigger 
                     value="download"
-                    className="tab-download text-xs sm:text-sm py-2 px-1 font-bold"
+                    className="topic-modal-tab tab-download text-xs sm:text-sm py-2 px-1 font-bold"
                   >
                     Download
                   </TabsTrigger>
@@ -1056,19 +1136,19 @@ function TopicsSection({
                 
                 <TabsContent value="sample" className="space-y-4 mt-4">
                   {selectedTopic.sampleQA && selectedTopic.sampleQA.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="topic-modal-answer-list space-y-4">
                       {selectedTopic.sampleQA.map((qa, idx) => (
-                        <Card key={idx} className="border-slate-200">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-bold text-slate-800 flex items-start gap-2">
-                              <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                        <Card key={idx} className="topic-modal-answer-card border-slate-200">
+                          <CardHeader className="topic-modal-answer-header pb-2">
+                            <CardTitle className="topic-modal-question-title text-sm font-bold text-slate-950 flex items-start gap-2">
+                              <MessageSquare className="h-4 w-4 text-blue-700 mt-0.5 flex-shrink-0" />
                               {qa.question}
                             </CardTitle>
                           </CardHeader>
-                          <CardContent className="pt-0">
-                            <p className="text-slate-700 text-sm mb-2">"{qa.sampleAnswer}"</p>
+                          <CardContent className="topic-modal-answer-content pt-0">
+                            <p className="topic-modal-answer-text text-slate-950 text-sm mb-2">"{qa.sampleAnswer}"</p>
                             {qa.tip && (
-                              <p className="text-xs text-amber-600 flex items-center gap-1 font-medium">
+                              <p className="topic-modal-tip text-xs text-amber-800 flex items-center gap-1 font-bold">
                                 <Lightbulb className="h-3 w-3" />
                                 {qa.tip}
                               </p>
@@ -1088,16 +1168,16 @@ function TopicsSection({
                 <TabsContent value="checklist" className="mt-4">
                   {selectedTopic.checklist && selectedTopic.checklist.length > 0 ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-slate-700 mb-4 font-medium">Check off items as you review them with your partner:</p>
+                      <p className="text-sm text-slate-950 mb-4 font-bold">Check off items as you review them with your partner:</p>
                       {selectedTopic.checklist.map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div key={idx} className="topic-modal-checklist-row flex items-start gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                           <Checkbox 
                             id={`check-${selectedTopic.id}-${idx}`}
                             checked={isItemChecked(selectedTopic.id, item)}
                             onCheckedChange={() => toggleChecklistItem(selectedTopic.id, item)}
                             className="mt-0.5 border-2 border-slate-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 h-5 w-5 flex-shrink-0"
                           />
-                          <Label htmlFor={`check-${selectedTopic.id}-${idx}`} className="text-sm cursor-pointer leading-relaxed text-slate-700">
+                          <Label htmlFor={`check-${selectedTopic.id}-${idx}`} className="text-sm cursor-pointer leading-relaxed text-slate-950 font-semibold">
                             {item}
                           </Label>
                         </div>
@@ -1111,10 +1191,10 @@ function TopicsSection({
                 </TabsContent>
                 
                 <TabsContent value="download" className="space-y-4 mt-4">
-                  <div className="text-center py-6">
-                    <FileText className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-700 mb-2 font-medium">Download the complete PDF with all questions</p>
-                    <p className="text-sm text-slate-500 mb-6">{selectedTopic.questionCount} questions • PDF format</p>
+                  <div className="topic-modal-download-panel text-center py-6">
+                    <FileText className="h-16 w-16 text-blue-700 mx-auto mb-4" />
+                    <p className="text-slate-950 mb-2 font-extrabold">Download the complete PDF with all questions</p>
+                    <p className="text-sm text-slate-800 mb-6 font-bold">{selectedTopic.questionCount} questions • PDF format</p>
                     {/* SECURE PDF DOWNLOAD - Uses Supabase private storage + signed URLs */}
                     <SecurePDFDownload
                       pdfFileName={selectedTopic.pdfFileName}
@@ -1140,15 +1220,37 @@ function TopicsSection({
 
 type TimelineMilestone = (typeof defaultMilestones)[number] & { id: string };
 
-function TimelineBuilderSection() {
+interface TimelineBuilderSectionProps {
+  standalone?: boolean;
+  isAuthenticated?: boolean;
+  onRequireSignup?: () => void;
+  onOpenDedicated?: () => void;
+}
+
+function TimelineBuilderSection({
+  standalone = false,
+  isAuthenticated = false,
+  onRequireSignup,
+  onOpenDedicated,
+}: TimelineBuilderSectionProps) {
   const [milestones, setMilestones] = useLocalStorage<TimelineMilestone[]>(
     'interview-timeline-v2',
     defaultMilestones.map((m, i) => ({ ...m, id: `m-${i}` }))
   );
   const [showPreview, setShowPreview] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<TimelineMilestone | null>(null);
+  const guestMilestoneLimit = 3;
+  const isGuestLimited = !isAuthenticated;
+
+  const milestoneIndex = (id: string) => milestones.findIndex((m) => m.id === id);
+  const canEditMilestone = (id: string) => !isGuestLimited || milestoneIndex(id) < guestMilestoneLimit;
+  const promptSignup = () => onRequireSignup?.();
 
   const updateMilestone = (id: string, field: keyof Omit<TimelineMilestone, 'id'>, value: string | boolean) => {
+    if (!canEditMilestone(id)) {
+      promptSignup();
+      return;
+    }
     setMilestones(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
@@ -1157,6 +1259,10 @@ function TimelineBuilderSection() {
   };
 
   const addMilestone = () => {
+    if (isGuestLimited) {
+      promptSignup();
+      return;
+    }
     const newId = `m-${Date.now()}`;
     const newMilestone = { id: newId, title: 'New Milestone', date: '', location: '', notes: '', hasEvidence: false };
     setMilestones(prev => [...prev, newMilestone]);
@@ -1164,12 +1270,20 @@ function TimelineBuilderSection() {
   };
 
   const removeMilestone = (id: string) => {
+    if (!canEditMilestone(id)) {
+      promptSignup();
+      return;
+    }
     setMilestones(prev => prev.filter(m => m.id !== id));
     setEditingMilestone(prev => prev?.id === id ? null : prev);
   };
 
   const saveEditingMilestone = () => {
     if (!editingMilestone) return;
+    if (!canEditMilestone(editingMilestone.id)) {
+      promptSignup();
+      return;
+    }
     setMilestones(prev => prev.map(m => m.id === editingMilestone.id ? editingMilestone : m));
     setEditingMilestone(null);
   };
@@ -1177,14 +1291,27 @@ function TimelineBuilderSection() {
   const filledCount = milestones.filter(m => m.date && m.location).length;
 
   return (
-    <section id="timeline" className="app-vivid-section py-20">
+    <section id="timeline" className={cn('app-vivid-section', standalone ? 'py-8' : 'py-20')}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        {!standalone && (
         <div className="text-center mb-10">
           <h2 className="text-3xl font-extrabold text-slate-950 mb-4">Relationship Timeline Builder</h2>
           <p className="text-slate-700 max-w-2xl mx-auto font-semibold">
             Document your relationship milestones. Having a clear timeline helps ensure you and your partner give consistent answers.
           </p>
+          {onOpenDedicated && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-5 border-2 border-blue-200 bg-white font-extrabold text-blue-800 shadow-sm hover:border-blue-400 hover:bg-blue-50"
+              onClick={onOpenDedicated}
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              Open focused builder
+            </Button>
+          )}
         </div>
+        )}
 
         <Card className="mb-6 border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50/80 to-emerald-50/60 shadow-xl shadow-blue-100/70">
           <CardHeader className="border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-emerald-50">
@@ -1205,17 +1332,40 @@ function TimelineBuilderSection() {
                 </Button>
               </div>
             </div>
+            {isGuestLimited && (
+              <div className="mt-4 rounded-2xl border-2 border-amber-200 bg-gradient-to-r from-amber-50 via-white to-cyan-50 p-4 text-sm font-semibold text-slate-800">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span>Free preview: fill 3 milestones. Sign up free to unlock the full focused timeline workspace.</span>
+                  <Button type="button" size="sm" onClick={promptSignup} className="bg-gradient-to-r from-blue-700 to-cyan-700 font-extrabold text-white">
+                    Sign up free
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
             {!showPreview ? (
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                {milestones.map((milestone) => (
-                  <div key={milestone.id} className="app-vivid-tile grid grid-cols-1 sm:grid-cols-12 gap-3 rounded-lg p-4 transition-colors hover:border-blue-300">
+                {milestones.map((milestone, index) => {
+                  const locked = isGuestLimited && index >= guestMilestoneLimit;
+                  return (
+                  <div key={milestone.id} className={cn('app-vivid-tile grid grid-cols-1 sm:grid-cols-12 gap-3 rounded-lg p-4 transition-colors hover:border-blue-300', locked && 'relative opacity-80')}>
+                    {locked && (
+                      <button
+                        type="button"
+                        onClick={promptSignup}
+                        className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/70 text-sm font-extrabold text-blue-800 backdrop-blur-[1px]"
+                      >
+                        Sign up free to unlock this milestone
+                      </button>
+                    )}
                     <div className="sm:col-span-3">
                       <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Milestone</Label>
                       <Input 
                         value={milestone.title} 
                         onChange={(e) => updateMilestone(milestone.id, 'title', e.target.value)} 
+                        readOnly={locked}
+                        onFocus={() => locked && promptSignup()}
                         className="mt-1 font-semibold text-slate-900 border-2 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" 
                       />
                     </div>
@@ -1225,6 +1375,8 @@ function TimelineBuilderSection() {
                         type="date" 
                         value={milestone.date} 
                         onChange={(e) => updateMilestone(milestone.id, 'date', e.target.value)} 
+                        readOnly={locked}
+                        onFocus={() => locked && promptSignup()}
                         className="mt-1 font-semibold text-slate-900 border-2 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" 
                       />
                     </div>
@@ -1233,6 +1385,8 @@ function TimelineBuilderSection() {
                       <Input 
                         value={milestone.location} 
                         onChange={(e) => updateMilestone(milestone.id, 'location', e.target.value)} 
+                        readOnly={locked}
+                        onFocus={() => locked && promptSignup()}
                         className="mt-1 font-semibold text-slate-900 border-2 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200" 
                         placeholder="City, Venue" 
                       />
@@ -1241,7 +1395,7 @@ function TimelineBuilderSection() {
                       <Label className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Notes</Label>
                       <button
                         type="button"
-                        onClick={() => setEditingMilestone({ ...milestone })}
+                        onClick={() => locked ? promptSignup() : setEditingMilestone({ ...milestone })}
                         className="mt-1 flex min-h-10 w-full items-center justify-between gap-3 rounded-md border-2 border-blue-200 bg-white px-3 py-2 text-left font-extrabold text-slate-950 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50/60 focus:outline-none focus:ring-2 focus:ring-blue-200"
                       >
                         <span className={milestone.notes ? 'line-clamp-1' : 'text-slate-500'}>
@@ -1254,6 +1408,7 @@ function TimelineBuilderSection() {
                       <Checkbox 
                         checked={milestone.hasEvidence} 
                         onCheckedChange={(checked: boolean) => updateMilestone(milestone.id, 'hasEvidence', checked)}
+                        disabled={locked}
                         className="mb-3 border-2 border-slate-500 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 h-5 w-5"
                         title="Has evidence/photos"
                       />
@@ -1262,7 +1417,8 @@ function TimelineBuilderSection() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="app-vivid-panel rounded-lg p-6">
@@ -1384,6 +1540,62 @@ function TimelineBuilderSection() {
   );
 }
 
+function RelationshipTimelinePage({ onBack }: { onBack: () => void }) {
+  const { isAuthenticated, user } = useOptionalAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-emerald-50 pb-16 text-slate-950">
+      <header className="sticky top-0 z-20 border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/70 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onBack}
+              className="font-extrabold text-blue-900 hover:bg-blue-50"
+            >
+              Back to Dashboard
+            </Button>
+            <div className="hidden h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-700 to-emerald-600 text-white shadow-lg shadow-blue-200 sm:flex">
+              <Calendar className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-wide text-blue-700">Focused relationship prep</p>
+              <h1 className="text-xl font-extrabold text-slate-950 sm:text-2xl">Relationship Timeline Builder</h1>
+            </div>
+          </div>
+          <Badge className="hidden border-0 bg-emerald-100 px-3 py-1.5 text-emerald-800 sm:inline-flex">
+            {isAuthenticated ? user?.email || 'Signed in' : 'Free preview'}
+          </Badge>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+        <section className="rounded-3xl border-2 border-blue-200 bg-gradient-to-r from-white via-blue-50 to-emerald-50 p-5 shadow-xl shadow-blue-100/70">
+          <h2 className="text-2xl font-extrabold text-slate-950">Build one clean timeline for your interview</h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700">
+            Capture exact dates, places, notes, and proof points without the homepage around it. Guests can preview 3 milestones; a free account unlocks the full timeline workspace.
+          </p>
+        </section>
+
+        <TimelineBuilderSection
+          standalone
+          isAuthenticated={isAuthenticated}
+          onRequireSignup={() => setShowAuthModal(true)}
+        />
+      </main>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+        onAuthenticated={() => setShowAuthModal(false)}
+      />
+    </div>
+  );
+}
+
 function PrintableChecklistSection() {
   const handlePrint = () => {
     window.print();
@@ -1423,7 +1635,7 @@ function PrintableChecklistSection() {
           </Button>
         </div>
 
-        <div className="app-vivid-panel rounded-xl p-6 sm:p-8 print:shadow-none print:border-0">
+        <div id="printable-checklist" className="app-vivid-panel rounded-xl p-6 sm:p-8 print:shadow-none print:border-0">
           <div className="text-center mb-8 border-b pb-6">
             <h1 className="text-2xl font-extrabold text-slate-950">Interview Preparation Checklist</h1>
             <p className="text-slate-700 mt-2 font-bold">Review these key topics with your partner before your interview</p>
@@ -1719,6 +1931,19 @@ function Footer({ navigate, onAdminClick }: { navigate: (page: Page) => void; on
 // ==================== MAIN APP ====================
 type ViewMode = 'home' | 'practice' | 'saved' | 'progress' | 'dashboard' | 'quick-practice' | 'mock-interview' | 'stress-review' | 'readiness' | 'partner-sync';
 
+const getDefaultBackTarget = (mode: ViewMode): ViewMode => (
+  mode === 'home' ? 'home' : 'dashboard'
+);
+
+const getPracticeBackTarget = (mode: ViewMode, currentTarget: ViewMode): ViewMode => {
+  if (mode === 'practice') return currentTarget;
+  if (mode === 'home') return 'home';
+  if (['dashboard', 'saved', 'progress', 'stress-review', 'readiness', 'partner-sync'].includes(mode)) {
+    return mode;
+  }
+  return 'dashboard';
+};
+
 function HomePage({
   navigate,
   initialViewMode = 'home',
@@ -1742,12 +1967,43 @@ function HomePage({
   
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
+  const [sectionBackTarget, setSectionBackTarget] = useState<ViewMode>(getDefaultBackTarget(initialViewMode));
+  const [practiceBackTarget, setPracticeBackTarget] = useState<ViewMode>(getDefaultBackTarget(initialViewMode));
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
   const normalizedTopics = useMemo(() => normalizeAllTopics(topics), []);
   const { setCurrentIndex } = usePractice();
 
+  const scrollPageToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  function openAuthModal(tab: 'login' | 'signup') {
+    setAuthDefaultTab(tab);
+    setShowAuthModal(true);
+  }
+
+  function canUseGuestFeature(featureKey: string, limit = 3) {
+    if (isAuthenticated) return true;
+    try {
+      const storageKey = `guest-feature-use:${featureKey}`;
+      const current = Number.parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
+      if (current >= limit) {
+        openAuthModal('signup');
+        return false;
+      }
+      localStorage.setItem(storageKey, String(current + 1));
+      return true;
+    } catch {
+      openAuthModal('signup');
+      return false;
+    }
+  }
+
   useEffect(() => {
+    const backTarget = getDefaultBackTarget(initialViewMode);
     setViewMode(initialViewMode);
+    setSectionBackTarget(backTarget);
+    setPracticeBackTarget(backTarget);
   }, [initialViewMode]);
 
   // Note: Ad settings fetching removed - PDFs now use SecurePDFDownload
@@ -1773,12 +2029,14 @@ function HomePage({
 
   // Handle entering practice mode for a topic
   const handlePractice = (topic: PracticeTopic) => {
+    if (!canUseGuestFeature('topic-practice')) return;
+    setPracticeBackTarget(getPracticeBackTarget(viewMode, practiceBackTarget));
     setActivePracticeTopic(topic);
     setViewMode('practice');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop();
   };
 
-  // Handle exiting practice mode (legacy, now handled by handleReturnHome)
+  // Handle exiting practice mode through the view-specific return target.
 
   // Note: PDF downloads in practice mode now use SecurePDFDownload component directly
   // The legacy handlePracticePDFDownload function has been removed
@@ -1788,35 +2046,48 @@ function HomePage({
 
   // Handle viewing saved questions
   const handleViewSaved = () => {
+    if (!canUseGuestFeature('saved-questions')) return;
+    setSectionBackTarget(getDefaultBackTarget(viewMode));
     setViewMode('saved');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop();
   };
 
   // Handle viewing progress
   const handleViewProgress = () => {
+    if (!canUseGuestFeature('progress-dashboard')) return;
+    setSectionBackTarget(getDefaultBackTarget(viewMode));
     setViewMode('progress');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop();
+  };
+
+  const handleStartReadinessCheck = () => {
+    if (!canUseGuestFeature('readiness-check')) return;
+    setSectionBackTarget(getDefaultBackTarget(viewMode));
+    setViewMode('readiness');
+    scrollPageToTop();
   };
 
   const handleViewPartnerSync = () => {
     setViewMode('partner-sync');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop();
   };
 
   const handleViewTimeline = () => {
-    setViewMode('home');
-    setTimeout(() => {
-      document.getElementById('timeline')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
+    navigate('timeline-builder');
   };
 
   // Note: handleViewDashboard and handleViewReadiness are integrated into the Dashboard component directly
 
-  // Handle returning to home
-  const handleReturnHome = () => {
-    setViewMode('home');
+  const handleReturnToSectionBackTarget = () => {
+    setViewMode(sectionBackTarget);
     setActivePracticeTopic(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop();
+  };
+
+  const handleReturnFromPractice = () => {
+    setViewMode(practiceBackTarget);
+    setActivePracticeTopic(null);
+    scrollPageToTop();
   };
 
   // Handle practicing a specific question from saved/progress
@@ -1824,15 +2095,11 @@ function HomePage({
     const targetTopic = normalizedTopics.find(t => t.id === topicId);
     if (targetTopic) {
       setCurrentIndex(topicId, questionIndex);
+      setPracticeBackTarget(getPracticeBackTarget(viewMode, practiceBackTarget));
       setActivePracticeTopic(targetTopic);
       setViewMode('practice');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollPageToTop();
     }
-  };
-
-  const openAuthModal = (tab: 'login' | 'signup') => {
-    setAuthDefaultTab(tab);
-    setShowAuthModal(true);
   };
 
   const adminOverlays = showAdmin ? (
@@ -1848,7 +2115,7 @@ function HomePage({
     return (
       <>
         <SavedForLaterPage
-          onBack={handleReturnHome}
+          onBack={handleReturnToSectionBackTarget}
           onPracticeQuestion={handlePracticeQuestion}
         />
         {adminOverlays}
@@ -1860,15 +2127,16 @@ function HomePage({
     return (
       <>
         <ProgressDashboard
-          onBack={handleReturnHome}
+          onBack={handleReturnToSectionBackTarget}
           onPracticeTopic={(topicId) => {
             const foundTopic = topics.find(t => t.id === topicId);
             if (foundTopic) {
               const practiceTopic = normalizedTopics.find(t => t.id === foundTopic.id);
               if (practiceTopic) {
+                setPracticeBackTarget('progress');
                 setActivePracticeTopic(practiceTopic);
                 setViewMode('practice');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                scrollPageToTop();
               }
             }
           }}
@@ -1885,7 +2153,7 @@ function HomePage({
           key={activePracticeTopic.id}
           topic={activePracticeTopic}
           allTopics={normalizedTopics}
-          onBack={handleReturnHome}
+          onBack={handleReturnFromPractice}
           onSelectQuestion={handlePracticeQuestion}
         />
         {adminOverlays}
@@ -1900,11 +2168,14 @@ function HomePage({
           onPracticeTopic={handlePractice}
           onStartQuickPractice={() => setViewMode('quick-practice')}
           onStartMockInterview={() => setViewMode('mock-interview')}
-          onViewSaved={() => setViewMode('saved')}
-          onViewProgress={() => setViewMode('progress')}
+          onStartReadinessCheck={handleStartReadinessCheck}
+          onViewSaved={handleViewSaved}
+          onViewProgress={handleViewProgress}
           onViewTimeline={handleViewTimeline}
           onViewCouplePractice={handleViewPartnerSync}
           onUpgrade={() => navigate('pricing')}
+          onOpenMessagesPage={() => navigate('messages')}
+          onOpenRobinPage={() => navigate('robin')}
           onViewAdmin={() => setShowAdmin(true)}
           canViewAdmin={isAdmin || isSuperAdmin}
         />
@@ -2018,7 +2289,11 @@ function HomePage({
         }}
         onNavigateToInterviewTopics={() => navigate('interview-topics')}
       />
-      <TimelineBuilderSection />
+      <TimelineBuilderSection
+        isAuthenticated={isAuthenticated}
+        onRequireSignup={() => openAuthModal('signup')}
+        onOpenDedicated={() => navigate('timeline-builder')}
+      />
       <PrintableChecklistSection />
       <TestimonialsSection />
       <TipsSection />
@@ -2042,6 +2317,10 @@ function HomePage({
         isOpen={showAuthModal} 
         onClose={() => setShowAuthModal(false)} 
         defaultTab={authDefaultTab}
+        onAuthenticated={() => {
+          setShowAuthModal(false);
+          navigate('dashboard');
+        }}
       />
 
       {/* Pricing Modal */}
@@ -2071,6 +2350,8 @@ function App() {
   
   const { page, navigate, questionSlug, inviteCode, topicSlug, situationSlug, clusterSlug, supportingSlug } = usePage();
   const { subscription, upgradePlan, effectiveSubscription, manageSubscription, refreshSubscription } = usePricing();
+  const appBackPage: Page = typeof window !== 'undefined' && localStorage.getItem('auth_token') ? 'dashboard' : 'home';
+  const navigateToAppBack = () => navigate(appBackPage);
 
   return (
     <AuthProvider>
@@ -2082,12 +2363,15 @@ function App() {
             
             {page === 'home' && <HomePage navigate={navigate} />}
             {page === 'dashboard' && <HomePage navigate={navigate} initialViewMode="dashboard" />}
+            {page === 'messages' && <MessagesPage onBack={() => navigate('dashboard')} />}
+            {page === 'robin' && <RobinPage onBack={() => navigate('dashboard')} />}
+            {page === 'timeline-builder' && <RelationshipTimelinePage onBack={navigateToAppBack} />}
             {page === 'readiness' && <HomePage navigate={navigate} initialViewMode="readiness" />}
             {page === 'stress-review' && <HomePage navigate={navigate} initialViewMode="stress-review" />}
             {page === 'question' && (
               <SEOQuestionPage
                 questionSlug={questionSlug}
-                onBack={() => navigate('home')}
+                onBack={navigateToAppBack}
                 onPractice={() => navigate('ai-interview')}
               />
             )}
@@ -2095,23 +2379,23 @@ function App() {
               <TopicHubPage topicSlug={topicSlug} onBack={() => navigate('interview-topics')} />
             )}
             {page === 'situation' && (
-              <SituationGuidePage situationSlug={situationSlug} onBack={() => navigate('home')} />
+              <SituationGuidePage situationSlug={situationSlug} onBack={navigateToAppBack} />
             )}
             {page === 'privacy' && <PrivacyPolicy />}
             {page === 'terms' && <Terms />}
             {page === 'contact' && <Contact />}
-            {page === 'refund-policy' && <RefundPolicy onBack={() => navigate('home')} />}
-            {page === 'terms-of-service' && <TermsOfService onBack={() => navigate('home')} />}
+            {page === 'refund-policy' && <RefundPolicy onBack={navigateToAppBack} />}
+            {page === 'terms-of-service' && <TermsOfService onBack={navigateToAppBack} />}
             {page === 'invite' && (
               <InvitePage 
                 inviteCode={inviteCode}
-                onBack={() => navigate('home')}
+                onBack={navigateToAppBack}
               />
             )}
-            {page === 'top-questions' && <TopQuestionsPage onBack={() => navigate('home')} />}
-            {page === 'question-database' && <QuestionDatabasePage onBack={() => navigate('home')} />}
-            {page === 'authority-preparation' && <AuthorityPreparationPage onBack={() => navigate('home')} />}
-            {page === 'interview-topics' && <InterviewTopicsPage onBack={() => navigate('home')} />}
+            {page === 'top-questions' && <TopQuestionsPage onBack={navigateToAppBack} />}
+            {page === 'question-database' && <QuestionDatabasePage onBack={navigateToAppBack} />}
+            {page === 'authority-preparation' && <AuthorityPreparationPage onBack={navigateToAppBack} />}
+            {page === 'interview-topics' && <InterviewTopicsPage onBack={navigateToAppBack} />}
             {page === 'pillar' && clusterSlug && (
               <PillarPage clusterSlug={clusterSlug} onBack={() => navigate('authority-preparation')} />
             )}
@@ -2121,7 +2405,7 @@ function App() {
             {page === 'ai-interview' && (
               <AIInterviewPage 
                 mode="standard"
-                onExit={() => navigate('home')}
+                onExit={navigateToAppBack}
               />
             )}
             {page === 'pricing' && (
@@ -2130,9 +2414,9 @@ function App() {
                 effectiveSubscription={effectiveSubscription}
                 onSelectPlan={(plan) => {
                   upgradePlan(plan);
-                  navigate('home');
+                  navigate(appBackPage);
                 }}
-                onBack={() => navigate('home')}
+                onBack={navigateToAppBack}
                 onManageBilling={() => manageSubscription()}
                 onRefreshSubscription={refreshSubscription}
               />
