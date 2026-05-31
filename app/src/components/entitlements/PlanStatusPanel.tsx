@@ -160,7 +160,7 @@ export function PlanStatusPanel({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
               <Zap className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-600">AI Practice Today</span>
+              <span className="text-slate-600">Robin Practice Today</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <UsageMetric
@@ -170,7 +170,7 @@ export function PlanStatusPanel({
                 remaining={aiUsage.sessionsRemaining}
               />
               <UsageMetric
-                label="Turns"
+                label="Chats"
                 used={aiUsage.turnsUsed}
                 total={aiUsage.turnsTotal}
                 remaining={aiUsage.turnsRemaining}
@@ -206,9 +206,9 @@ export function PlanStatusPanel({
               <div className="space-y-2 pt-2 border-t">
                 <FeatureRow
                   icon={<Zap className="w-4 h-4" />}
-                  name="AI Interview"
+                  name="Practice with Robin"
                   status={hasPremiumAccess ? 'full' : 'limited'}
-                  description={hasPremiumAccess ? 'Unlimited' : '5 turns, 1 session/day'}
+                  description={hasPremiumAccess ? 'Expanded access' : '5 chats, 1 session/day'}
                 />
                 <FeatureRow
                   icon={<Download className="w-4 h-4" />}

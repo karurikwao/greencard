@@ -1556,7 +1556,7 @@ function AIConfigTab() {
               <div>
                 <div className="font-medium text-slate-800">{plan.name}</div>
                 <div className="text-sm text-slate-500">
-                  {plan.max_turns_per_session} turns per session, {plan.max_sessions_per_day} sessions per day
+                  {plan.max_turns_per_session} Robin chats per session, {plan.max_sessions_per_day} Robin sessions per day
                 </div>
               </div>
               <Badge variant={plan.can_choose_provider ? 'default' : 'secondary'}>
@@ -2356,7 +2356,7 @@ function LiveAnswerExamplesTab() {
               <div className="text-center py-12 text-slate-500">
                 <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="font-medium">No pending answer candidates</p>
-                <p className="text-sm">Captured answers will appear here after AI interview practice.</p>
+                <p className="text-sm">Captured answers will appear here after Robin interview practice.</p>
               </div>
             ) : (
               <div className="divide-y">

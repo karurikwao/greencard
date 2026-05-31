@@ -175,7 +175,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
     
     // Check if user can start a session using server-tracked usage
     if (!canStartSession) {
-      setError('Daily AI session limit reached. Upgrade for unlimited access.');
+      setError('Daily Robin session limit reached. Upgrade for unlimited access.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
     }
@@ -185,7 +185,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
   const startInterview = useCallback(async () => {
     // NEW: Check if user can start session using server-side tracked usage
     if (!canStartSession) {
-      setError('Daily AI session limit reached. Upgrade for unlimited access.');
+      setError('Daily Robin session limit reached. Upgrade for unlimited access.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
       return;
@@ -257,7 +257,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
     
     // NEW: Check if user can continue this session
     if (!canContinueSession) {
-      setError('Daily AI turn limit reached for this session. Upgrade for unlimited access.');
+      setError('Daily Robin chat limit reached for this session. Upgrade for unlimited access.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
       return;
@@ -416,7 +416,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
                 <Bot className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <span className="font-medium">Robin, your AI interview coach</span>
+                <span className="font-medium">Robin, your virtual interview coach</span>
                 <p className="text-xs text-slate-500">Practice with Robin before your USCIS marriage interview</p>
               </div>
             </div>
@@ -490,7 +490,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
               </div>
               <CardTitle className="text-2xl">Practice with Robin</CardTitle>
               <CardDescription className="space-y-1">
-                <p>Robin is your AI interview coach for marriage interview practice.</p>
+                <p>Robin is your virtual interview coach for marriage interview practice.</p>
                 <p className="text-xs text-slate-400">Robin will ask follow-up questions similar to what USCIS officers may ask.</p>
               </CardDescription>
             </CardHeader>

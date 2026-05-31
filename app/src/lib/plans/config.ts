@@ -100,7 +100,7 @@ const PREMIUM_FEATURES: PlanFeatures = {
 const TRIAL_CONFIG: TrialPlanConfig = {
   id: 'trial',
   name: 'Free Trial',
-  description: 'Try all features risk-free for 7 days with limited AI practice',
+  description: 'Try all features risk-free for 7 days with limited Robin practice',
   price: 0,
   durationDays: 7,
   aiLimits: LOW_AI_LIMITS,
@@ -117,7 +117,7 @@ const TRIAL_CONFIG: TrialPlanConfig = {
 const MONTHLY_CONFIG: SubscriptionPlanConfig = {
   id: 'monthly',
   name: 'Premium Monthly',
-  description: 'Full access with unlimited AI practice and all features',
+  description: 'Full access with unlimited Robin practice and all features',
   price: 19.99,
   billingInterval: 'month',
   priceLabel: '$19.99/month',
@@ -135,7 +135,7 @@ const MONTHLY_CONFIG: SubscriptionPlanConfig = {
 const LIFETIME_CONFIG: LifetimePlanConfig = {
   id: 'lifetime',
   name: 'Lifetime Access',
-  description: 'Full access forever with the highest AI limits - best value',
+  description: 'Full access forever with the highest Robin chat limits - best value',
   price: 79.99,
   priceLabel: '$79.99 one-time',
   aiLimits: UNLIMITED_AI_LIMITS,

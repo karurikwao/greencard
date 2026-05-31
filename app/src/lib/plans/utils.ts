@@ -437,8 +437,8 @@ export function getPricingDisplayInfo(currentPlan: PlanType): PricingDisplayInfo
       includedFeatures.push('Unlimited practice questions');
     }
     if (features.aiInterview) {
-      includedFeatures.push(`${plan.aiLimits.maxTurnsPerSession} AI turns per session`);
-      includedFeatures.push(`${plan.aiLimits.maxSessionsPerDay} AI sessions per day`);
+      includedFeatures.push(`${plan.aiLimits.maxTurnsPerSession} Robin chats per session`);
+      includedFeatures.push(`${plan.aiLimits.maxSessionsPerDay} Robin sessions per day`);
     }
     if (features.readinessCheck) {
       includedFeatures.push('Unlimited readiness checks');

@@ -149,7 +149,7 @@ export const PLANS: Record<PlanType, PricingPlan> = {
     features: [
       'Full access for 90 days',
       'All PDF downloads',
-      'AI interview practice',
+      'Robin interview practice',
       'Couple comparison',
       'Readiness checks',
     ],

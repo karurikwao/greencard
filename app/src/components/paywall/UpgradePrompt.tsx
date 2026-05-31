@@ -8,13 +8,17 @@
  * and clearer CTAs for higher upgrade rates.
  */
 
-import { Sparkles, Lock, X, Check, Crown, Gift, Calendar, Clock } from 'lucide-react';
+import { useState } from 'react';
+import { Sparkles, Lock, X, Check, Crown, Gift, Calendar, Clock, Loader2, Shield } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { PLAN_CONFIG, PAID_PLANS, type PlanType, type FeatureKey } from '@/lib/plans';
+import { createCheckoutSession } from '@/lib/subscriptions/stripe';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { useOptionalAuth } from '@/lib/auth/AuthContext';
 
 interface ProgressStats {
   questionsPracticed?: number;
@@ -68,7 +72,7 @@ function getFeatureDescription(feature: FeatureKey): string {
   const descriptions: Record<FeatureKey, string> = {
     practiceQuestions: 'Access hundreds of real USCIS interview questions',
     readinessCheck: 'Track your preparation progress and interview readiness',
-    aiInterview: 'Practice with realistic AI-powered interview simulation',
+    aiInterview: 'Practice with realistic Robin-guided interview simulation',
     pdfDownloads: 'Download printable study guides and preparation checklists',
     coupleCompare: 'Review and align your answers with your partner',
     canChooseProvider: 'Choose between different AI providers for best results',
@@ -127,7 +131,7 @@ function getContextualCopy(
       return {
         title: 'Continue practicing with Robin',
         message: `${progressPrefix}Robin helps you rehearse realistic follow-up questions before your interview. Upgrade to continue practicing and get detailed feedback.`,
-        primaryCta: 'Unlock AI Practice',
+        primaryCta: 'Unlock Robin Practice',
         secondaryCta: 'Maybe Later',
       };
     case 'pdf_locked':
@@ -160,6 +164,13 @@ export function UpgradePrompt({
   context = 'feature_locked',
   progressStats,
 }: UpgradePromptProps) {
+  const { isAuthenticated } = useOptionalAuth();
+  const [selectedPlan, setSelectedPlan] = useState<PlanType | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PlanType | null>(null);
+
   if (!isOpen) return null;
 
   const currentPlanConfig = PLAN_CONFIG[currentPlan];
@@ -187,9 +198,59 @@ export function UpgradePrompt({
   };
   const modalWidthClass = isPdfPrompt ? 'max-w-6xl' : sizeClasses[size];
 
+  const startCheckout = async (plan: PlanType) => {
+    if (onUpgrade) {
+      onUpgrade(plan);
+      return;
+    }
+
+    setSelectedPlan(plan);
+    setIsProcessing(true);
+    setCheckoutError(null);
+
+    const result = await createCheckoutSession(
+      plan,
+      `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      `${window.location.origin}/billing/cancel`
+    );
+
+    if (result.success && result.checkoutUrl) {
+      window.location.href = result.checkoutUrl;
+      return;
+    }
+
+    setCheckoutError(result.error || 'Unable to start checkout. Please try again.');
+    setIsProcessing(false);
+  };
+
+  const handleUpgrade = (plan: PlanType) => {
+    if (onUpgrade) {
+      onUpgrade(plan);
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setCheckoutError(null);
+      setPendingCheckoutPlan(plan);
+      setShowAuthModal(true);
+      return;
+    }
+
+    void startCheckout(plan);
+  };
+
+  const continuePendingCheckout = () => {
+    setShowAuthModal(false);
+    const plan = pendingCheckoutPlan;
+    setPendingCheckoutPlan(null);
+    if (plan) {
+      void startCheckout(plan);
+    }
+  };
+
   const prompt = (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-6">
-      <Card className={cn('relative w-full max-h-[calc(100vh-2rem)] overflow-y-auto', modalWidthClass)}>
+    <div className="premium-upgrade-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+      <Card className={cn('premium-upgrade-shell relative w-full max-h-[calc(100vh-2rem)] overflow-y-auto border-2 border-blue-200 bg-white opacity-100 shadow-2xl shadow-blue-950/20', modalWidthClass)}>
         {/* Close button */}
         <button
           onClick={onClose}
@@ -199,26 +260,26 @@ export function UpgradePrompt({
           <X className="w-5 h-5" />
         </button>
 
-        <CardHeader className={cn('text-center pb-4', isPdfPrompt && 'px-5 pt-7 sm:px-8')}>
-          <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-6 h-6 text-amber-600" />
+        <CardHeader className={cn('text-center pb-4 bg-gradient-to-br from-blue-50 via-white to-amber-50', isPdfPrompt && 'px-5 pt-7 sm:px-8')}>
+          <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 text-white shadow-lg shadow-orange-200">
+            <Lock className="w-7 h-7" />
           </div>
-          <CardTitle className={cn('text-xl', isPdfPrompt && 'text-2xl')}>
+          <CardTitle className={cn('text-xl font-extrabold text-slate-950', isPdfPrompt && 'text-2xl sm:text-3xl')}>
             {displayTitle}
           </CardTitle>
-          <CardDescription className={cn('max-w-md mx-auto text-base', isPdfPrompt && 'max-w-2xl')}>
+          <CardDescription className={cn('max-w-md mx-auto text-base font-semibold text-slate-800', isPdfPrompt && 'max-w-2xl')}>
             {displayMessage}
           </CardDescription>
         </CardHeader>
 
         <CardContent className={cn('space-y-6', isPdfPrompt && 'px-5 pb-7 sm:px-8')}>
           {/* Current plan info */}
-          <div className={cn('bg-slate-50 rounded-lg p-4', isPdfPrompt && 'mx-auto max-w-3xl')}>
+          <div className={cn('rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-4 shadow-sm', isPdfPrompt && 'mx-auto max-w-3xl')}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-slate-600">Your Current Plan</span>
-              <Badge variant="secondary">{currentPlanConfig.name}</Badge>
+              <span className="text-sm font-bold text-slate-800">Your Current Plan</span>
+              <Badge variant="secondary" className="font-bold">{currentPlanConfig.name}</Badge>
             </div>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm font-semibold text-slate-700">
               {currentPlan === 'trial' 
                 ? "You're on the free trial with limited access. Upgrade for unlimited practice."
                 : `You're currently on the ${currentPlanConfig.name}.`
@@ -226,9 +287,15 @@ export function UpgradePrompt({
             </p>
           </div>
 
+          {checkoutError && (
+            <div className="mx-auto max-w-3xl rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-bold text-rose-700">
+              {checkoutError}
+            </div>
+          )}
+
           {/* Upgrade options */}
           <div>
-            <h4 className="text-sm font-medium text-slate-700 mb-3 text-center">
+            <h4 className="text-sm font-extrabold text-blue-900 mb-4 text-center">
               Choose the plan that works for you
             </h4>
             
@@ -245,15 +312,15 @@ export function UpgradePrompt({
                   <div
                     key={plan.id}
                     className={cn(
-                      'relative rounded-xl border-2 p-4 transition-all cursor-pointer hover:shadow-md',
+                      'relative rounded-2xl border-2 p-4 transition-all cursor-pointer shadow-lg hover:-translate-y-1 hover:shadow-xl',
                       isPdfPrompt && 'p-5 sm:p-6',
                       isPopular
-                        ? 'border-blue-200 bg-blue-50/30 ring-1 ring-blue-100'
+                        ? 'border-blue-300 bg-gradient-to-br from-blue-50 via-white to-cyan-50 ring-2 ring-blue-100'
                         : isRecommended
-                        ? 'border-amber-200 bg-amber-50/30'
-                        : 'border-slate-200 hover:border-slate-300'
+                        ? 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 ring-2 ring-amber-100'
+                        : 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-fuchsia-50 hover:border-rose-300'
                     )}
-                    onClick={() => onUpgrade?.(plan.id)}
+                    onClick={() => handleUpgrade(plan.id)}
                   >
                     {isPopular && (
                       <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs">
@@ -267,43 +334,61 @@ export function UpgradePrompt({
                     )}
 
                     <div className="text-center mb-3">
-                      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white mb-2">
-                        <Icon className="w-5 h-5 text-slate-600" />
+                      <div className={cn(
+                        'inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-3 text-white shadow-lg',
+                        isPopular
+                          ? 'bg-gradient-to-br from-blue-600 to-cyan-500 shadow-blue-200'
+                          : isRecommended
+                          ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-amber-200'
+                          : 'bg-gradient-to-br from-rose-600 to-fuchsia-500 shadow-rose-200'
+                      )}>
+                        <Icon className="w-6 h-6" />
                       </div>
-                      <h5 className={cn('font-medium text-slate-800 text-sm', isPdfPrompt && 'text-base')}>{plan.name}</h5>
+                      <h5 className={cn('font-extrabold text-slate-950 text-sm', isPdfPrompt && 'text-base')}>{plan.name}</h5>
                       <div className={cn('text-lg font-bold text-slate-900', isPdfPrompt && 'text-xl')}>
                         {'priceLabel' in plan ? plan.priceLabel : 'Free'}
                       </div>
                     </div>
 
                     <ul className={cn('space-y-1.5 mb-3', isPdfPrompt && 'space-y-2 mb-4')}>
-                      <li className="flex items-center gap-2 text-xs text-slate-600">
+                      <li className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                         <span>{featureName}</span>
                       </li>
-                      <li className="flex items-center gap-2 text-xs text-slate-600">
+                      <li className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <span>{plan.aiLimits.maxTurnsPerSession} AI turns/session</span>
+                        <span>{plan.aiLimits.maxTurnsPerSession} Robin chats/session</span>
                       </li>
-                      <li className="flex items-center gap-2 text-xs text-slate-600">
+                      <li className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <span>{plan.aiLimits.maxSessionsPerDay} sessions/day</span>
+                        <span>{plan.aiLimits.maxSessionsPerDay} Robin sessions/day</span>
                       </li>
                     </ul>
 
                     <Button 
                       size="sm" 
                       className={cn(
-                        'w-full',
+                        'w-full font-extrabold shadow-lg',
                         isPopular 
-                          ? 'bg-blue-500 hover:bg-blue-600' 
+                          ? 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-blue-200' 
                           : isRecommended 
-                          ? 'bg-amber-500 hover:bg-amber-600'
-                          : 'bg-slate-700 hover:bg-slate-800'
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-200'
+                          : 'bg-gradient-to-r from-rose-600 to-fuchsia-600 hover:from-rose-700 hover:to-fuchsia-700 shadow-rose-200'
                       )}
-                      onClick={() => onUpgrade?.(plan.id)}
+                      disabled={isProcessing}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleUpgrade(plan.id);
+                      }}
                     >
-                      {isPopular ? primaryCta : 'Choose Plan'}
+                      {isProcessing && selectedPlan === plan.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Opening checkout...
+                        </>
+                      ) : (
+                        isPopular ? primaryCta : 'Choose Plan'
+                      )}
                     </Button>
                   </div>
                 );
@@ -312,17 +397,17 @@ export function UpgradePrompt({
           </div>
 
           {/* Trust footer */}
-          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-bold text-slate-700">
             <div className="flex items-center gap-1">
-              <Check className="w-3 h-3 text-emerald-500" />
+              <Check className="w-3 h-3 text-emerald-600" />
               <span>Cancel anytime</span>
             </div>
             <div className="flex items-center gap-1">
-              <Check className="w-3 h-3 text-emerald-500" />
+              <Check className="w-3 h-3 text-emerald-600" />
               <span>30-day money back</span>
             </div>
             <div className="flex items-center gap-1">
-              <Check className="w-3 h-3 text-emerald-500" />
+              <Shield className="w-3 h-3 text-emerald-600" />
               <span>Secure payment</span>
             </div>
           </div>
@@ -331,7 +416,7 @@ export function UpgradePrompt({
           <div className="text-center">
             <button 
               onClick={onClose}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              className="text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors"
             >
               {secondaryCta}
             </button>
@@ -345,7 +430,18 @@ export function UpgradePrompt({
     return prompt;
   }
 
-  return createPortal(prompt, document.body);
+  return createPortal(
+    <>
+      {prompt}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+        onAuthenticated={continuePendingCheckout}
+      />
+    </>,
+    document.body
+  );
 }
 
 /**
@@ -390,7 +486,7 @@ export function InlineUpgradePrompt({
         return {
           title: 'Keep Practicing With Robin',
           message: `${progressMessage}Upgrade to continue rehearsing with Robin and get detailed feedback before your interview.`,
-          cta: 'Unlock AI Practice',
+          cta: 'Unlock Robin Practice',
         };
       default:
         return {

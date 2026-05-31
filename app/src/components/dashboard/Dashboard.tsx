@@ -604,8 +604,8 @@ export function Dashboard({
     }
     document.getElementById('dashboard-robin')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  const cardClass = 'border-2 border-blue-100 bg-white shadow-xl shadow-slate-200/70';
-  const surfaceClass = 'rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-3 shadow-sm';
+  const cardClass = 'border-2 border-blue-200 bg-white shadow-xl shadow-slate-200/70';
+  const surfaceClass = 'rounded-xl border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-4 shadow-md shadow-blue-100/70';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-slate-50 to-amber-50/40 pb-20 text-slate-900">
@@ -622,10 +622,11 @@ export function Dashboard({
                 variant="outline"
                 size="sm"
                 onClick={openRobin}
+                title="Chat with Robin"
                 className="border-indigo-200 bg-white font-bold text-indigo-800 hover:bg-indigo-50"
               >
                 <Bot className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Robin</span>
+                <span className="hidden whitespace-nowrap sm:inline">Chat with Robin</span>
               </Button>
               <Button
                 variant="outline"
@@ -691,19 +692,19 @@ export function Dashboard({
             </div>
             <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Reviewed</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Reviewed</p>
                 <p className="mt-1 text-xl font-semibold text-slate-950">{practiceSummary.reviewedPercent}%</p>
               </div>
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Comfortable</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Comfortable</p>
                 <p className="mt-1 text-xl font-semibold text-emerald-700">{practiceSummary.understood}</p>
               </div>
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Needs review</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Needs review</p>
                 <p className="mt-1 text-xl font-semibold text-amber-700">{practiceSummary.needsPractice}</p>
               </div>
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saved</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Saved</p>
                 <p className="mt-1 text-xl font-semibold text-blue-700">{practiceSummary.saved}</p>
               </div>
             </div>
@@ -881,12 +882,12 @@ export function Dashboard({
           <CardContent className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current plan</p>
-                <p className="mt-1 font-semibold text-slate-900">{planName}</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Current plan</p>
+                <p className="mt-1 font-extrabold text-slate-950">{planName}</p>
               </div>
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Access window</p>
-                <p className="mt-1 font-semibold text-slate-900">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Access window</p>
+                <p className="mt-1 font-extrabold text-slate-950">
                   {hasPremium && currentPlanType === 'lifetime'
                     ? 'Lifetime'
                     : daysRemaining != null
@@ -895,8 +896,8 @@ export function Dashboard({
                 </p>
               </div>
               <div className={surfaceClass}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment path</p>
-                <p className="mt-1 font-semibold text-slate-900">{hasPremium ? 'Paid account' : 'Trial to paid'}</p>
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-700">Payment path</p>
+                <p className="mt-1 font-extrabold text-slate-950">{hasPremium ? 'Paid account' : 'Trial to paid'}</p>
               </div>
             </div>
 
@@ -905,16 +906,16 @@ export function Dashboard({
                 <div
                   key={feature.label}
                   className={cn(
-                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                    'flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-semibold shadow-sm',
                     feature.enabled
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                      : 'border-slate-200 bg-slate-50 text-slate-600'
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                      : 'border-blue-200 bg-white text-slate-900'
                   )}
                 >
                   {feature.enabled ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   ) : (
-                    <Lock className="w-4 h-4 text-slate-400" />
+                    <Lock className="w-4 h-4 text-blue-700" />
                   )}
                   <span>{feature.label}</span>
                 </div>

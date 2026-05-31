@@ -27,22 +27,22 @@ PLAN_PRICES = {
 }
 
 PLAN_LABELS = {
-    'monthly': 'InterviewReady Premium Monthly',
-    'lifetime': 'InterviewReady Lifetime Access',
-    'interviewPass': 'InterviewReady 90-Day Interview Pass',
+    'monthly': 'InterviewReady Premium Monthly - Robin + PDF Guides',
+    'lifetime': 'InterviewReady Lifetime Access - Robin + PDF Guides',
+    'interviewPass': 'InterviewReady 90-Day Interview Pass - Robin + PDF Guides',
 }
 
 PLAN_CHECKOUT_DETAILS = {
     'monthly': {
-        'summary': 'Recurring premium access for spouse green card interview preparation.',
+        'summary': 'Monthly premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
         'terms': '$19.99 today, then $19.99 each month until canceled. Cancel anytime from your dashboard; access continues through the paid billing period.',
     },
     'lifetime': {
-        'summary': 'One-time lifetime access to premium spouse green card interview preparation features.',
+        'summary': 'One-time lifetime premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
         'terms': '$79.99 one-time payment for lifetime access. No renewal is created.',
     },
     'interviewPass': {
-        'summary': 'One-time 90-day access pass for interview preparation.',
+        'summary': 'One-time 90-day premium pass with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
         'terms': '$39.99 one-time payment for 90 days of premium access. No renewal is created.',
     },
 }
@@ -153,12 +153,45 @@ def _checkout_custom_text(plan_type):
     details = PLAN_CHECKOUT_DETAILS[plan_type]
     return {
         'submit': {
-            'message': f"{details['terms']} {REFUND_POLICY_SUMMARY}",
+            'message': (
+                f"You are unlocking InterviewReady premium: {details['summary']} "
+                f"{details['terms']} {REFUND_POLICY_SUMMARY}"
+            ),
         },
         'after_submit': {
             'message': 'A receipt and purchase confirmation will be sent by email after payment is complete.',
         },
     }
+
+
+def _checkout_product_description(plan_type):
+    details = PLAN_CHECKOUT_DETAILS[plan_type]
+    return f"{details['summary']} {details['terms']} {REFUND_POLICY_SUMMARY}"
+
+
+def _sync_checkout_product_copy(price_id, plan_type):
+    """Keep Stripe-hosted Checkout item copy explicit to reduce purchase confusion."""
+    if not price_id:
+        return
+    try:
+        price = stripe.Price.retrieve(price_id, expand=['product'])
+        product = price.get('product') if isinstance(price, dict) else getattr(price, 'product', None)
+        product_id = _stripe_object_id(product)
+        if not product_id:
+            return
+        stripe.Product.modify(
+            product_id,
+            name=PLAN_LABELS[plan_type],
+            description=_checkout_product_description(plan_type),
+            metadata={
+                'app_source': 'interview_ready',
+                'plan_type': plan_type,
+                'purchase_summary': PLAN_CHECKOUT_DETAILS[plan_type]['summary'],
+                'refund_policy': REFUND_POLICY_SUMMARY,
+            },
+        )
+    except stripe.error.StripeError:
+        pass
 
 
 def _subscription_event_matches_current(sub, incoming_subscription_id):
@@ -187,7 +220,7 @@ def _get_or_create_test_price(plan_type):
 
     product = stripe.Product.create(
         name=PLAN_LABELS[plan_type],
-        description=PLAN_CHECKOUT_DETAILS[plan_type]['summary'],
+        description=_checkout_product_description(plan_type),
         metadata={
             'app_source': 'interview_ready',
             'plan_type': plan_type,
@@ -250,6 +283,7 @@ def create_checkout_session():
     price_id = _get_price_id(plan_type)
     if not price_id:
         return jsonify({'error': 'Payment not configured for this plan', 'code': 'PRICE_NOT_CONFIGURED'}), 503
+    _sync_checkout_product_copy(price_id, plan_type)
 
     discount_info = None
     promo_validation = None

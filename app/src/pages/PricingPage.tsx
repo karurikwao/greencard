@@ -10,7 +10,7 @@
  * VISUAL PSYCHOLOGY: Plan ordering, hierarchy, and trust elements optimized.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Check, 
   Sparkles, 
@@ -44,6 +44,8 @@ import {
 import { SubscriptionStatusBanner } from '@/components/subscription';
 import type { EffectiveSubscription } from '@/lib/subscriptions';
 import { AnnouncementBanner, TrustSnippets, ContentBlocks } from '@/components/content';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { useOptionalAuth } from '@/lib/auth/AuthContext';
 
 interface PricingPageProps {
   /** Current user's plan (if logged in) */
@@ -106,7 +108,7 @@ const PLAN_VALUE_DESCRIPTIONS: Record<PlanType, {
     title: 'Free Trial',
     subtitle: 'Try the experience first. No credit card required.',
     benefits: [
-      'Limited AI interview practice',
+      'Limited practice with Robin',
       'Basic readiness check',
       'Try before upgrading',
     ],
@@ -118,7 +120,7 @@ const PLAN_VALUE_DESCRIPTIONS: Record<PlanType, {
     subtitle: 'Everything you need to prepare confidently.',
     benefits: [
       'Unlimited practice questions',
-      'Practice with Robin, your AI interview coach',
+      'Practice with Robin, your virtual interview coach',
       'Interview readiness scoring',
       'Compare answers with your partner',
       'Printable preparation PDFs',
@@ -167,8 +169,8 @@ const FAQ_ITEMS = [
     a: 'You keep access to your timeline and notes forever. Many couples continue using the tools to prepare for the removal of conditions interview (2-year green card renewal).',
   },
   {
-    q: 'Is the AI interview realistic?',
-    a: 'Robin is your AI interview coach that asks follow-up questions similar to what USCIS officers may ask. It helps you practice under realistic conditions based on actual interview experiences.',
+    q: 'Is Robin practice realistic?',
+    a: 'Robin is your virtual interview coach that asks follow-up questions similar to what USCIS officers may ask. She helps you practice under realistic conditions based on actual interview experiences.',
   },
   {
     q: 'Can I cancel the monthly plan?',
@@ -176,7 +178,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'What\'s included in the free trial?',
-    a: 'The trial lets you try a limited AI interview session and explore the practice questions. Upgrade anytime for unlimited access.',
+    a: 'The trial lets you try a limited Robin practice session and explore the practice questions. Upgrade anytime for unlimited access.',
   },
 ];
 
@@ -282,11 +284,11 @@ function PricingCard({ plan, isCurrentPlan, onSelect, isProcessing }: PricingCar
       {/* AI Limits - subtle */}
       <div className="bg-white/60 rounded-lg p-3 mb-4 border border-slate-100">
         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
-          AI Practice Limits
+          Robin Practice Limits
         </p>
         <div className="flex justify-between text-sm">
-          <span className="text-slate-600">{plan.aiLimits.maxTurnsPerSession} turns/session</span>
-          <span className="text-slate-600">{plan.aiLimits.maxSessionsPerDay} sessions/day</span>
+          <span className="text-slate-800 font-semibold">{plan.aiLimits.maxTurnsPerSession} Robin chats/session</span>
+          <span className="text-slate-800 font-semibold">{plan.aiLimits.maxSessionsPerDay} Robin sessions/day</span>
         </div>
       </div>
 
@@ -360,7 +362,7 @@ function TrustStrip() {
   );
 }
 
-export function PricingPage({ 
+export function PricingPage({
   currentPlan = 'trial',
   effectiveSubscription,
   onSelectPlan,
@@ -369,35 +371,34 @@ export function PricingPage({
   onManageBilling,
   onRefreshSubscription,
 }: PricingPageProps) {
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+
+  const { isAuthenticated } = useOptionalAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PlanType | null>(null);
   
   // Determine if we should show subscription status banner
   const showStatusBanner = effectiveSubscription && 
     ['grace_period', 'past_due', 'canceled', 'expired'].includes(effectiveSubscription.effectiveStatus);
 
-  const handleSelectPlan = async (plan: PlanType) => {
-    // Skip checkout for trial
-    if (plan === 'trial') {
-      onSelectPlan?.(plan);
-      return;
-    }
-    
+  const startCheckout = async (plan: PlanType) => {
     setCheckoutError(null);
-    
-    // Start checkout process
     setIsProcessing(true);
-    
+
     try {
       // Dynamically import to avoid loading Stripe code unless needed
       const { createCheckoutSession } = await import('@/lib/subscriptions/stripe');
-      
+
       const result = await createCheckoutSession(
         plan,
         `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
         `${window.location.origin}/billing/cancel`
       );
-      
+
       if (result.success && result.checkoutUrl) {
         // Redirect to Stripe Checkout
         window.location.href = result.checkoutUrl;
@@ -409,6 +410,32 @@ export function PricingPage({
       console.error('Checkout error:', err);
       setCheckoutError('An unexpected error occurred. Please try again.');
       setIsProcessing(false);
+    }
+  };
+
+  const handleSelectPlan = async (plan: PlanType) => {
+    // Skip checkout for trial
+    if (plan === 'trial') {
+      onSelectPlan?.(plan);
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setCheckoutError(null);
+      setPendingCheckoutPlan(plan);
+      setShowAuthModal(true);
+      return;
+    }
+
+    await startCheckout(plan);
+  };
+
+  const continuePendingCheckout = () => {
+    setShowAuthModal(false);
+    const plan = pendingCheckoutPlan;
+    setPendingCheckoutPlan(null);
+    if (plan) {
+      void startCheckout(plan);
     }
   };
 
@@ -569,7 +596,7 @@ export function PricingPage({
                   <Bot className="w-6 h-6 text-purple-600" />
                 </div>
                 <h3 className="font-medium text-slate-800 mb-1">Practice with Robin</h3>
-                <p className="text-sm text-slate-500">Your AI interview coach asks follow-up questions similar to what USCIS officers may ask</p>
+                <p className="text-sm text-slate-700">Robin asks follow-up questions similar to what USCIS officers may ask</p>
               </div>
               
               <div className="flex flex-col items-center text-center p-4">
@@ -624,6 +651,13 @@ export function PricingPage({
           </p>
         </div>
       </footer>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+        onAuthenticated={continuePendingCheckout}
+      />
     </div>
   );
 }

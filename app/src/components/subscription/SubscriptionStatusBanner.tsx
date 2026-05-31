@@ -125,7 +125,7 @@ function getBannerConfig(subscription: EffectiveSubscription) {
         return {
           icon: Clock,
           title: 'Trial Ending Soon',
-          message: `Your free trial ends in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Upgrade to continue AI interview practice and premium preparation tools.`,
+          message: `Your free trial ends in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Upgrade to continue Robin interview practice and premium preparation tools.`,
           severity: 'warning',
           primaryAction: 'Upgrade Now',
           secondaryAction: undefined,

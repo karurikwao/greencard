@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 import type { PlanType } from '@/lib/plans';
 import { DISPLAY_PLANS } from '@/lib/plans';
 import { createCheckoutSession } from '@/lib/subscriptions/stripe';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { useOptionalAuth } from '@/lib/auth/AuthContext';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -58,7 +60,7 @@ const PLAN_VALUE_DESCRIPTIONS: Record<string, {
   trial: {
     title: 'Free Trial',
     benefits: [
-      'Limited AI practice',
+      'Limited Robin practice',
       'Basic readiness check',
       'No credit card required',
     ],
@@ -69,7 +71,7 @@ const PLAN_VALUE_DESCRIPTIONS: Record<string, {
     title: 'Premium Monthly',
     benefits: [
       'Unlimited practice questions',
-      'Full AI interview simulation',
+      'Full Robin interview simulation',
       'Readiness scoring',
       'Couple comparison',
       'PDF downloads',
@@ -130,23 +132,20 @@ export function PricingModal({
   trialDaysLeft,
   context = 'upgrade_prompt',
 }: PricingModalProps) {
+  const { isAuthenticated } = useOptionalAuth();
   const [selectedPlan, setSelectedPlan] = useState<PlanType | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PlanType | null>(null);
 
   if (!isOpen) return null;
 
-  const handleUpgrade = async (plan: PlanType) => {
-    // Skip for trial
-    if (plan === 'trial') {
-      onUpgrade(plan);
-      return;
-    }
-    
+  const startCheckout = async (plan: PlanType) => {
     setSelectedPlan(plan);
     setIsProcessing(true);
     setCheckoutError(null);
-    
+
     const result = await createCheckoutSession(
       plan,
       `${window.location.origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -162,19 +161,45 @@ export function PricingModal({
     setIsProcessing(false);
   };
 
+  const handleUpgrade = async (plan: PlanType) => {
+    // Skip for trial
+    if (plan === 'trial') {
+      onUpgrade(plan);
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setCheckoutError(null);
+      setPendingCheckoutPlan(plan);
+      setShowAuthModal(true);
+      return;
+    }
+
+    await startCheckout(plan);
+  };
+
+  const continuePendingCheckout = () => {
+    setShowAuthModal(false);
+    const plan = pendingCheckoutPlan;
+    setPendingCheckoutPlan(null);
+    if (plan) {
+      void startCheckout(plan);
+    }
+  };
+
   // Get contextual headline based on why modal was opened
   const getHeadline = () => {
     if (context === 'trial_ended' || (currentPlan === 'trial' && (trialDaysLeft === 0 || trialDaysLeft === undefined))) {
       return {
         title: "Your trial has ended",
-        subtitle: "Continue preparing with Premium access to unlock unlimited AI interview practice.",
+        subtitle: "Continue preparing with Premium access to unlock Robin chat practice and premium tools.",
         badge: 'Upgrade to Continue',
       };
     }
     if (context === 'feature_limit') {
       return {
         title: "Unlock premium features",
-        subtitle: "Get unlimited access to AI-powered interview practice and premium tools.",
+        subtitle: "Get unlimited access to Robin-guided interview practice and premium tools.",
         badge: 'Premium Access',
       };
     }
@@ -200,8 +225,8 @@ export function PricingModal({
   const plansToShow = DISPLAY_PLANS.filter(p => showTrial || p.id !== 'trial');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-auto">
-      <Card className="w-full max-w-5xl relative">
+    <div className="premium-upgrade-overlay fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/70 p-4 backdrop-blur-sm">
+      <Card className="premium-upgrade-shell w-full max-w-5xl relative bg-white opacity-100">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
@@ -261,14 +286,14 @@ export function PricingModal({
                   className={cn(
                     'relative rounded-xl border-2 p-5 transition-all',
                     isCurrent
-                      ? 'border-emerald-500 bg-emerald-50/30'
+                      ? 'border-emerald-500 bg-emerald-50'
                       : isPopular
-                      ? 'border-blue-400 bg-gradient-to-b from-blue-50/80 to-white shadow-lg scale-[1.02] ring-2 ring-blue-100'
+                      ? 'border-blue-400 bg-gradient-to-b from-blue-50 to-white shadow-lg scale-[1.02] ring-2 ring-blue-100'
                       : isRecommended
-                      ? 'border-amber-300 bg-gradient-to-b from-amber-50/60 to-white shadow-md'
+                      ? 'border-amber-300 bg-gradient-to-b from-amber-50 to-white shadow-md'
                       : isTrial
-                      ? 'border-slate-200 bg-slate-50/50'
-                      : 'border-slate-200 hover:border-slate-300',
+                      ? 'border-slate-200 bg-slate-50'
+                      : 'border-slate-200 bg-white hover:border-slate-300',
                     'flex flex-col'
                   )}
                 >
@@ -378,6 +403,13 @@ export function PricingModal({
           </p>
         </CardContent>
       </Card>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+        onAuthenticated={continuePendingCheckout}
+      />
     </div>
   );
 }

@@ -170,7 +170,7 @@ export function AIDemoSection() {
         {/* Subtle footer note */}
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-500">
-            Robin is your AI interview coach for marriage interview practice.
+            Robin is your virtual interview coach for marriage interview practice.
           </p>
         </div>
       </div>

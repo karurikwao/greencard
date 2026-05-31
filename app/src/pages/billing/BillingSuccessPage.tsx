@@ -152,7 +152,7 @@ export function BillingSuccessPage() {
               <>
                 Your payment was successful and your premium access is now active.
                 <br /><br />
-                You can now access all premium features including unlimited AI interview practice.
+                You can now access all premium features including expanded Robin interview practice.
               </>
             )}
           </CardDescription>
