@@ -550,6 +550,35 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================================
+-- SECTION 8A: DASHBOARD VIRTUAL AGENT MEMORY BANK
+-- ============================================================================
+
+CREATE TABLE dashboard_agent_memory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    topic_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    source TEXT NOT NULL DEFAULT 'dashboard_virtual_agent',
+    memory_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_dashboard_agent_memory_user_created ON dashboard_agent_memory(user_id, created_at DESC);
+CREATE INDEX idx_dashboard_agent_memory_tags ON dashboard_agent_memory USING GIN (topic_tags);
+CREATE INDEX idx_dashboard_agent_memory_search ON dashboard_agent_memory USING GIN (
+    to_tsvector('english', COALESCE(question, '') || ' ' || COALESCE(answer, ''))
+);
+
+CREATE TRIGGER trigger_update_dashboard_agent_memory_updated_at
+BEFORE UPDATE ON dashboard_agent_memory
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
 -- SECTION 9: PDF ASSETS AND SECURE DOWNLOAD TRACKING
 -- ============================================================================
 
@@ -1580,12 +1609,23 @@ CREATE TABLE broadcast_messages (
         CHECK (audience_type IN ('all_users', 'trial_users', 'premium_users', 'expired_users', 'free_users')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     sent_count INTEGER DEFAULT 0,
+    scheduled_at TIMESTAMPTZ,
+    send_email BOOLEAN NOT NULL DEFAULT true,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_broadcast_messages_is_active ON broadcast_messages(is_active);
+
+CREATE TABLE admin_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE support_tickets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1615,6 +1655,10 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_broadcast_messages_updated_at
 BEFORE UPDATE ON broadcast_messages
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_admin_settings_updated_at
+BEFORE UPDATE ON admin_settings
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_support_tickets_updated_at
