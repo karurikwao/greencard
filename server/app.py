@@ -35,10 +35,13 @@ def create_app():
     @app.route('/api', methods=['GET'])
     @app.route('/api/health', methods=['GET'])
     @app.route('/api/healthz', methods=['GET'])
+    def api_health():
+        return jsonify({'status': 'ok', 'service': 'greencardprep-api'})
+
     @app.route('/health', methods=['GET'])
     @app.route('/healthz', methods=['GET'])
     def health():
-        return jsonify({'status': 'ok', 'service': 'greencardprep-api'})
+        return 'OK', 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
     if static_dir:
         @app.route('/', defaults={'path': ''})
