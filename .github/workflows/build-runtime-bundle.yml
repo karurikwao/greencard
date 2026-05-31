@@ -1,0 +1,63 @@
+name: Build Runtime Bundle
+
+on:
+  push:
+    paths:
+      - .github/workflows/build-runtime-bundle.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: app
+        env:
+          VITE_API_URL: ""
+        run: npm run build
+
+      - name: Package runtime bundle
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/greenprep-runtime
+          mkdir -p /tmp/greenprep-runtime/server/static /tmp/greenprep-runtime/server/storage/pdfs
+          rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude 'static' --exclude 'storage' server/ /tmp/greenprep-runtime/server/
+          rsync -a app/dist/ /tmp/greenprep-runtime/server/static/
+          if [ -d pdfs ]; then
+            rsync -a pdfs/ /tmp/greenprep-runtime/server/storage/pdfs/
+          fi
+          cp MASTER_SETUP_POSTGRES_v5.sql /tmp/greenprep-runtime/MASTER_SETUP_POSTGRES_v5.sql
+          tar -czf runtime-bundle-current.tar.gz -C /tmp/greenprep-runtime .
+          ls -lh runtime-bundle-current.tar.gz
+
+      - name: Commit runtime bundle
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime-bundle-current.tar.gz
+          if git diff --cached --quiet; then
+            echo "Runtime bundle is unchanged."
+            exit 0
+          fi
+          git commit -m "Build runtime bundle for Coolify"
+          git push
