@@ -8,7 +8,7 @@ load_dotenv()
 
 
 def create_app():
-    static_dir = os.getenv('STATIC_DIR')
+    static_dir = os.getenv('STATIC_DIR') or os.path.join(os.path.dirname(__file__), 'static')
     app = Flask(__name__, static_folder=None)
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
@@ -32,7 +32,11 @@ def create_app():
     app.register_blueprint(pdf_bp, url_prefix='/api/pdf')
     app.register_blueprint(api_bp, url_prefix='/api')
 
+    @app.route('/api', methods=['GET'])
     @app.route('/api/health', methods=['GET'])
+    @app.route('/api/healthz', methods=['GET'])
+    @app.route('/health', methods=['GET'])
+    @app.route('/healthz', methods=['GET'])
     def health():
         return jsonify({'status': 'ok', 'service': 'greencardprep-api'})
 
