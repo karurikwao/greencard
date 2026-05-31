@@ -29,10 +29,11 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
     getRecommendedTopics,
   } = useReadiness();
 
-  const [questions] = useState(() => getRandomizedQuestions());
+  const [questions, setQuestions] = useState(() => getRandomizedQuestions());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [showResults, setShowResults] = useState(false);
+  const [isRetaking, setIsRetaking] = useState(false);
 
   const currentQuestion = questions[currentIndex];
   const progress = ((currentIndex) / questions.length) * 100;
@@ -48,18 +49,21 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
       const newResult = calculateScore(questions, answers);
       saveResult(newResult);
       setShowResults(true);
+      setIsRetaking(false);
       onComplete?.();
     }
   }, [currentIndex, questions, answers, calculateScore, saveResult, onComplete]);
 
   const handleRetake = useCallback(() => {
+    setQuestions(getRandomizedQuestions());
     setAnswers({});
     setCurrentIndex(0);
     setShowResults(false);
-  }, []);
+    setIsRetaking(true);
+  }, [getRandomizedQuestions]);
 
   // Show results if already completed and not retaking
-  if (result && !showResults && !shouldRetake) {
+  if (result && !showResults && !shouldRetake && !isRetaking) {
     return (
       <ResultsView 
         result={result} 
@@ -82,13 +86,18 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
   }
 
   return (
-    <Card className={cn('border-slate-200/60', embedded ? '' : 'max-w-2xl mx-auto')}>
+    <Card className={cn(
+      'overflow-hidden border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-amber-50/50 shadow-xl shadow-blue-100/70',
+      embedded ? '' : 'max-w-2xl mx-auto'
+    )}>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <TrendingUp className="w-5 h-5 text-slate-500" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-200">
+            <TrendingUp className="w-5 h-5" />
+          </div>
           <div>
-            <CardTitle className="text-lg">Interview Readiness Check</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl font-extrabold text-slate-950">Interview Readiness Check</CardTitle>
+            <CardDescription className="font-bold text-blue-800">
               Question {currentIndex + 1} of {questions.length}
             </CardDescription>
           </div>
@@ -101,7 +110,7 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
           <Badge variant="secondary" className="mb-3">
             {READINESS_CATEGORIES[currentQuestion.category].label}
           </Badge>
-          <h3 className="text-lg text-slate-800 leading-relaxed">
+          <h3 className="text-xl font-extrabold text-slate-950 leading-relaxed">
             {currentQuestion.question}
           </h3>
         </div>
@@ -115,10 +124,10 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
             <div
               key={idx}
               className={cn(
-                'flex items-start gap-3 p-4 rounded-lg border transition-all cursor-pointer',
+                'flex items-start gap-3 rounded-xl border-2 bg-white/90 p-4 font-semibold shadow-sm transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
                 answers[currentQuestion.id] === option.text
-                  ? 'border-slate-400 bg-slate-50'
-                  : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-blue-400 bg-blue-50 shadow-blue-100'
+                  : 'border-blue-100 hover:border-blue-300'
               )}
               onClick={() => handleAnswer(option.text)}
             >
@@ -129,7 +138,7 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
               />
               <Label 
                 htmlFor={`option-${idx}`}
-                className="text-slate-700 cursor-pointer flex-1"
+                className="text-slate-900 cursor-pointer flex-1"
               >
                 {option.text}
               </Label>
@@ -141,7 +150,7 @@ export function ReadinessCheck({ onComplete, embedded = false }: ReadinessCheckP
           <Button
             onClick={handleNext}
             disabled={!answers[currentQuestion.id]}
-            className="bg-slate-700 hover:bg-slate-800"
+            className="bg-gradient-to-r from-blue-700 to-cyan-700 font-extrabold shadow-lg shadow-blue-200 hover:from-blue-800 hover:to-cyan-800"
           >
             {currentIndex < questions.length - 1 ? (
               <>
@@ -180,10 +189,10 @@ function ResultsView({
   };
 
   return (
-    <Card className="border-slate-200/60 max-w-2xl mx-auto">
+    <Card className="max-w-2xl mx-auto overflow-hidden border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/60 to-emerald-50/50 shadow-xl shadow-blue-100/70">
       <CardHeader className="text-center">
-        <CardTitle className="text-xl">Your Interview Readiness</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-2xl font-extrabold text-slate-950">Your Interview Readiness</CardTitle>
+        <CardDescription className="font-semibold text-slate-700">
           Completed {new Date(result.completedAt).toLocaleDateString()}
         </CardDescription>
       </CardHeader>
@@ -204,14 +213,14 @@ function ResultsView({
         </div>
 
         {/* Category Scores */}
-        <div className="space-y-3">
-          <h4 className="font-medium text-slate-700">Breakdown by Category</h4>
+        <div className="space-y-3 rounded-2xl border border-blue-100 bg-white/85 p-4 shadow-sm">
+          <h4 className="font-extrabold text-slate-950">Breakdown by Category</h4>
           {(Object.keys(result.categoryScores) as Array<keyof typeof READINESS_CATEGORIES>).map((cat) => {
             const score = result.categoryScores[cat];
             return (
               <div key={cat} className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">{READINESS_CATEGORIES[cat].label}</span>
+                <div className="flex justify-between text-sm font-bold">
+                  <span className="text-slate-800">{READINESS_CATEGORIES[cat].label}</span>
                   <span className={getScoreColor(score)}>{score}%</span>
                 </div>
                 <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -229,11 +238,11 @@ function ResultsView({
 
         {/* Recommendations */}
         {result.recommendations.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="font-medium text-slate-700">Recommendations</h4>
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+            <h4 className="font-extrabold text-slate-950">Recommendations</h4>
             <ul className="space-y-2">
               {result.recommendations.map((rec, idx) => (
-                <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                <li key={idx} className="flex items-start gap-2 text-sm font-semibold text-slate-800">
                   <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                   {rec}
                 </li>
@@ -244,11 +253,11 @@ function ResultsView({
 
         {/* Recommended Topics */}
         {recommendedTopics.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="font-medium text-slate-700">Recommended Topics to Study</h4>
+          <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+            <h4 className="font-extrabold text-slate-950">Recommended Topics to Study</h4>
             <div className="flex flex-wrap gap-2">
               {recommendedTopics.map(topicId => (
-                <Badge key={topicId} variant="secondary">
+                <Badge key={topicId} className="bg-white text-blue-800 border border-blue-200 font-bold" variant="secondary">
                   {topicId.replace(/-/g, ' ')}
                 </Badge>
               ))}
@@ -257,7 +266,7 @@ function ResultsView({
         )}
 
         <div className="flex gap-3 pt-4 border-t">
-          <Button variant="outline" onClick={onRetake} className="flex-1">
+          <Button variant="outline" onClick={onRetake} className="flex-1 border-blue-200 bg-white font-extrabold text-blue-800 shadow-sm hover:bg-blue-50 hover:text-blue-950">
             <RotateCcw className="w-4 h-4 mr-2" />
             Retake Assessment
           </Button>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { RichMessageContent } from '@/components/messages/RichMessageContent';
 import { cn } from '@/lib/utils';
 import type { UserNotification, NotificationType } from '@/lib/notifications';
 import { getUserNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notifications/api';
@@ -61,6 +62,7 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
         n.id === notificationId ? { ...n, isRead: true } : n
       ));
       setUnreadCount(prev => Math.max(0, prev - 1));
+      window.dispatchEvent(new CustomEvent('dashboard-messages-refresh'));
     }
   };
 
@@ -69,6 +71,7 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
     if (result.success) {
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
+      window.dispatchEvent(new CustomEvent('dashboard-messages-refresh'));
     }
   };
 
@@ -85,10 +88,13 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
   }
 
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className={cn('overflow-hidden border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/80 to-cyan-50/70 shadow-lg shadow-emerald-100/60', className)}>
+      <CardHeader className="flex flex-row items-center justify-between border-b border-emerald-200/70 bg-gradient-to-r from-emerald-100/90 via-white to-cyan-100/90 pb-4">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg">Notifications</CardTitle>
+          <div className="rounded-xl bg-white p-2 text-emerald-700 shadow-sm ring-1 ring-emerald-200">
+            <Bell className="h-5 w-5" />
+          </div>
+          <CardTitle className="text-lg text-slate-950">Notifications</CardTitle>
           {unreadCount > 0 && (
             <Badge variant="secondary" className="bg-blue-100 text-blue-700">
               {unreadCount} unread
@@ -102,13 +108,13 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
           </Button>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <ScrollArea className="h-[300px]">
           {notifications.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
               <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No notifications yet</p>
-              <p className="text-sm">We'll notify you about important updates here</p>
+              <p className="font-semibold text-slate-950">No notifications yet</p>
+              <p className="text-sm text-slate-700">We'll notify you about important updates here</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -118,8 +124,10 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
                   <div
                     key={notification.id}
                     className={cn(
-                      'flex gap-3 p-3 rounded-lg transition-colors',
-                      notification.isRead ? 'bg-slate-50' : 'bg-blue-50/50'
+                      'flex gap-3 rounded-xl border p-3 shadow-sm transition-colors',
+                      notification.isRead
+                        ? 'border-slate-200 bg-white/85'
+                        : 'border-blue-200 bg-blue-50/80'
                     )}
                   >
                     <div className={cn('w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0', typeColors[notification.type])}>
@@ -141,9 +149,7 @@ export function NotificationPanel({ className }: NotificationPanelProps) {
                           </Button>
                         )}
                       </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {notification.message}
-                      </p>
+                      <RichMessageContent content={notification.message} className="mt-1 text-slate-700" />
                       <p className="text-xs text-slate-400 mt-2">
                         {new Date(notification.createdAt).toLocaleDateString()}
                       </p>

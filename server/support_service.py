@@ -78,6 +78,10 @@ def json_dumps(value: Dict[str, Any]) -> str:
     return json.dumps(to_jsonable(value))
 
 
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def normalize_ticket_category(category: str) -> str:
     return category if category in ALLOWED_TICKET_CATEGORIES else 'other'
 
@@ -380,6 +384,15 @@ def notify_admins(title: str, message: str, metadata: Dict[str, Any], notificati
 def normalize_ticket_row(row: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     triage = parse_jsonish(row.get('ai_triage') or row.get('aiTriage'))
     ticket_context = context or {}
+    conversation = triage.get('supportConversation')
+    if not isinstance(conversation, list):
+        conversation = []
+    urgency = str(triage.get('urgency') or '').lower()
+    admin_urgent = bool(
+        triage.get('adminUrgent')
+        or triage.get('needsAdminReview')
+        or urgency == 'high'
+    )
     refund_signal = has_refund_signal(
         row.get('category') or 'other',
         row.get('subject') or '',
@@ -405,6 +418,8 @@ def normalize_ticket_row(row: Dict[str, Any], context: Optional[Dict[str, Any]] 
         'aiSummary': row.get('ai_summary') or row.get('aiSummary'),
         'aiSuggestedReply': row.get('ai_suggested_reply') or row.get('aiSuggestedReply'),
         'aiTriage': triage,
+        'aiConversation': conversation,
+        'adminUrgent': admin_urgent,
         'repliedBy': str(row.get('replied_by') or row.get('repliedBy') or '') or None,
         'repliedAt': row.get('replied_at') or row.get('repliedAt'),
         'closedAt': row.get('closed_at') or row.get('closedAt'),

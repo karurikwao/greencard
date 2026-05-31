@@ -22,6 +22,11 @@ export interface AdminMemoryStatus {
     tracked_question_states?: number;
     users_with_question_state?: number;
   };
+  dashboardAgentMemory?: {
+    total_entries?: number;
+    users_with_agent_memory?: number;
+    captured_today?: number;
+  };
   planLimits: Array<{
     plan_type: string;
     name: string;

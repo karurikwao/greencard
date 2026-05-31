@@ -37,7 +37,7 @@ const LOW_AI_LIMITS: AILimits = {
  */
 const MEDIUM_AI_LIMITS: AILimits = {
   maxTurnsPerSession: 20,
-  maxSessionsPerDay: 5,
+  maxSessionsPerDay: 1,
 };
 
 /**
@@ -45,15 +45,15 @@ const MEDIUM_AI_LIMITS: AILimits = {
  */
 const HIGH_AI_LIMITS: AILimits = {
   maxTurnsPerSession: 20,
-  maxSessionsPerDay: 5,
+  maxSessionsPerDay: 1,
 };
 
 /**
  * Unlimited-tier AI limits (for lifetime)
  */
 const UNLIMITED_AI_LIMITS: AILimits = {
-  maxTurnsPerSession: 50,
-  maxSessionsPerDay: 10,
+  maxTurnsPerSession: 30,
+  maxSessionsPerDay: 1,
 };
 
 // ============================================================================
@@ -117,7 +117,7 @@ const TRIAL_CONFIG: TrialPlanConfig = {
 const MONTHLY_CONFIG: SubscriptionPlanConfig = {
   id: 'monthly',
   name: 'Premium Monthly',
-  description: 'Full access with unlimited Robin practice and all features',
+  description: 'Full access with 20 daily Robin chats and all features',
   price: 19.99,
   billingInterval: 'month',
   priceLabel: '$19.99/month',
@@ -135,7 +135,7 @@ const MONTHLY_CONFIG: SubscriptionPlanConfig = {
 const LIFETIME_CONFIG: LifetimePlanConfig = {
   id: 'lifetime',
   name: 'Lifetime Access',
-  description: 'Full access forever with the highest Robin chat limits - best value',
+  description: 'Full access forever with 30 daily Robin chats - best value',
   price: 79.99,
   priceLabel: '$79.99 one-time',
   aiLimits: UNLIMITED_AI_LIMITS,

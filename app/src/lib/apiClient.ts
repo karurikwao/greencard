@@ -300,6 +300,8 @@ export const apiClient = {
       'request-refund': '/api/stripe/request-refund',
       'generate-pdf-signed-url': '/api/pdf/generate-signed-url',
       'ai-interview-turn': '/api/ai/interview-turn',
+      'dashboard-agent-question': '/api/ai/dashboard-agent',
+      'dashboard-agent-history': '/api/ai/dashboard-agent/history',
       'support-ai-assist': '/api/ai/support-assist',
       'create-support-ticket': '/api/support/tickets',
       'admin-support-tickets': '/api/admin/support/tickets',

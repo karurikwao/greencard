@@ -354,9 +354,9 @@ CREATE TABLE plan_config (
 INSERT INTO plan_config (plan_type, name, description, max_turns_per_session, max_sessions_per_day, can_use_ai, can_choose_provider, can_choose_model)
 VALUES
     ('trial', 'Free Trial', '7-day free trial with limited AI access', 5, 1, true, false, false),
-    ('monthly', 'Premium Monthly', 'Full access with AI interview practice', 20, 5, true, true, true),
-    ('lifetime', 'Lifetime Access', 'Full access forever with highest limits', 50, 10, true, true, true),
-    ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days', 20, 5, true, true, true)
+    ('monthly', 'Premium Monthly', 'Full access with 20 daily Robin chats', 20, 1, true, true, true),
+    ('lifetime', 'Lifetime Access', 'Full access forever with 30 daily Robin chats', 30, 1, true, true, true),
+    ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days with 20 daily Robin chats', 20, 1, true, true, true)
 ON CONFLICT (plan_type) DO UPDATE SET
     name = EXCLUDED.name, description = EXCLUDED.description,
     max_turns_per_session = EXCLUDED.max_turns_per_session,
@@ -532,12 +532,12 @@ BEGIN
         RETURN;
     END IF;
 
-    IF v_usage_record.sessions_count >= v_max_sessions THEN
+    IF v_usage_record.total_turns >= v_max_turns THEN
         RETURN QUERY SELECT
-            false, format('Daily session limit reached (%s per day)', v_max_sessions)::TEXT,
+            false, format('Daily Robin chat limit reached (%s per day)', v_max_turns)::TEXT,
             v_plan_type, v_max_sessions, v_max_turns,
-            v_usage_record.sessions_count, v_usage_record.total_turns, 0,
-            GREATEST(0, v_max_turns - v_usage_record.total_turns);
+            v_usage_record.sessions_count, v_usage_record.total_turns,
+            GREATEST(0, v_max_sessions - v_usage_record.sessions_count), 0;
         RETURN;
     END IF;
 

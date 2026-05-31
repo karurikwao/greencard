@@ -148,18 +148,18 @@ export function getPlanAiLimits(plan: PlanType): AILimits {
 }
 
 /**
- * Get the maximum turns per session for a plan
+ * Get the maximum daily Robin chats for a plan
  * @param plan - The plan type
- * @returns Maximum turns per session
+ * @returns Maximum daily Robin chats
  */
 export function getMaxTurnsPerSession(plan: PlanType): number {
   return PLAN_CONFIG[plan].aiLimits.maxTurnsPerSession;
 }
 
 /**
- * Get the maximum sessions per day for a plan
+ * Get the legacy maximum sessions per day for a plan
  * @param plan - The plan type
- * @returns Maximum sessions per day
+ * @returns Legacy maximum sessions per day
  */
 export function getMaxSessionsPerDay(plan: PlanType): number {
   return PLAN_CONFIG[plan].aiLimits.maxSessionsPerDay;
@@ -348,17 +348,19 @@ export function checkUsageLimits(plan: PlanType): UsageCheckResult {
   const limits = getPlanAiLimits(plan);
   const today = getTodayUsage();
   
-  if (today.sessions >= limits.maxSessionsPerDay) {
+  if (today.totalTurns >= limits.maxTurnsPerSession) {
     return {
       allowed: false,
-      reason: `Daily session limit reached (${limits.maxSessionsPerDay} per day)`,
+      reason: `Daily Robin chat limit reached (${limits.maxTurnsPerSession} per day)`,
       remainingSessions: 0,
+      remainingTurns: 0,
     };
   }
   
   return {
     allowed: true,
-    remainingSessions: limits.maxSessionsPerDay - today.sessions,
+    remainingSessions: Math.max(0, limits.maxSessionsPerDay - today.sessions),
+    remainingTurns: Math.max(0, limits.maxTurnsPerSession - today.totalTurns),
   };
 }
 
@@ -437,8 +439,7 @@ export function getPricingDisplayInfo(currentPlan: PlanType): PricingDisplayInfo
       includedFeatures.push('Unlimited practice questions');
     }
     if (features.aiInterview) {
-      includedFeatures.push(`${plan.aiLimits.maxTurnsPerSession} Robin chats per session`);
-      includedFeatures.push(`${plan.aiLimits.maxSessionsPerDay} Robin sessions per day`);
+      includedFeatures.push(`${plan.aiLimits.maxTurnsPerSession} daily Robin chats`);
     }
     if (features.readinessCheck) {
       includedFeatures.push('Unlimited readiness checks');

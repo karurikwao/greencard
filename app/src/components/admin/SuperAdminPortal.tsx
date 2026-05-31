@@ -1556,7 +1556,7 @@ function AIConfigTab() {
               <div>
                 <div className="font-medium text-slate-800">{plan.name}</div>
                 <div className="text-sm text-slate-500">
-                  {plan.max_turns_per_session} Robin chats per session, {plan.max_sessions_per_day} Robin sessions per day
+                  {plan.max_turns_per_session} daily Robin chats
                 </div>
               </div>
               <Badge variant={plan.can_choose_provider ? 'default' : 'secondary'}>
@@ -2115,6 +2115,11 @@ function LiveSupportTicketsTab() {
                         {ticket.refundSignal && (
                           <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
                             Refund review
+                          </Badge>
+                        )}
+                        {ticket.adminUrgent && (
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                            Urgent
                           </Badge>
                         )}
                         {ticket.retentionOffer?.eligible && (

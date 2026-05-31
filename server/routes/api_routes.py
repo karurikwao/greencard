@@ -21,6 +21,15 @@ from support_service import (
     normalize_ticket_row,
     notify_admins,
     parse_jsonish,
+    utc_now_iso,
+)
+from routes.ai_routes import (
+    _build_support_messages,
+    _call_provider_with_fallback,
+    _default_model_for_provider,
+    _normalize_support_response,
+    _select_default_provider,
+    _support_fallback_response,
 )
 
 api_bp = Blueprint('api', __name__)
@@ -1191,6 +1200,61 @@ def _send_support_admin_emails(ticket, context, refund_signal):
     return sent
 
 
+def _support_conversation_item(role, content, source='support_ai', metadata=None):
+    return {
+        'role': role,
+        'content': str(content or '').strip()[:2400],
+        'source': source,
+        'createdAt': utc_now_iso(),
+        'metadata': metadata or {},
+    }
+
+
+def _support_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'y'}
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _run_support_ai(category, subject, message, context, conversation):
+    provider = _select_default_provider()
+    model = _default_model_for_provider(provider)
+    messages = _build_support_messages(category, subject, message, context, conversation)
+    try:
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+            provider,
+            model,
+            messages,
+        )
+        normalized = _normalize_support_response(response_text, actual_provider, actual_model, category)
+        normalized['requestedProvider'] = provider
+        normalized['requestedModel'] = model
+        normalized['providerFallback'] = fallback_used
+        normalized['providerErrors'] = provider_errors[-2:]
+        return normalized
+    except Exception as e:
+        return _support_fallback_response(category, subject, message, str(e))
+
+
+def _support_needs_admin(ai_response, category, refund_signal, cancel_signal):
+    urgency = str((ai_response or {}).get('urgency') or '').lower()
+    can_resolve = _support_bool((ai_response or {}).get('canResolve'), True)
+    needs_review = _support_bool((ai_response or {}).get('needsAdminReview'), False)
+    should_create_ticket = _support_bool((ai_response or {}).get('shouldCreateTicket'), False)
+    return bool(
+        urgency == 'high'
+        or needs_review
+        or not can_resolve
+        or refund_signal
+        or cancel_signal
+        or (category in {'billing', 'refund'} and should_create_ticket)
+    )
+
+
 def _serialize_broadcast(row):
     row = row or {}
     created_at = row.get('created_at')
@@ -1417,11 +1481,65 @@ def create_support_ticket_endpoint():
         return jsonify({'error': 'Subject and message are required'}), 400
 
     context = get_user_support_context(user['id'])
+    conversation = ai_triage.get('supportConversation')
+    if not isinstance(conversation, list):
+        conversation = []
+    if not conversation:
+        conversation.append(_support_conversation_item('user', message, 'user', {'initial': True}))
+
+    ai_response = None
+    if not ai_suggested_reply:
+        ai_response = _run_support_ai(category, subject, message, context, conversation)
+        ai_summary = ai_response.get('summary') or ai_summary
+        ai_suggested_reply = ai_response.get('reply') or ai_suggested_reply
+        if category == 'other' and ai_response.get('recommendedCategory'):
+            category = normalize_ticket_category(ai_response.get('recommendedCategory'))
+        if not subject and ai_response.get('suggestedTicketSubject'):
+            subject = ai_response.get('suggestedTicketSubject')
+    else:
+        ai_response = {
+            'reply': ai_suggested_reply,
+            'summary': ai_summary,
+            'urgency': ai_triage.get('urgency') or 'normal',
+            'recommendedCategory': ai_triage.get('recommendedCategory') or category,
+            'provider': ai_triage.get('provider'),
+            'model': ai_triage.get('model'),
+            'fallback': ai_triage.get('fallback', False),
+            'canResolve': ai_triage.get('canResolve', True),
+            'needsAdminReview': ai_triage.get('needsAdminReview', False),
+            'shouldCreateTicket': ai_triage.get('shouldCreateTicket', True),
+        }
+
+    if ai_suggested_reply and not any(item.get('role') == 'assistant' for item in conversation if isinstance(item, dict)):
+        conversation.append(_support_conversation_item(
+            'assistant',
+            ai_suggested_reply,
+            'support_ai',
+            {
+                'urgency': ai_response.get('urgency'),
+                'provider': ai_response.get('provider'),
+                'model': ai_response.get('model'),
+                'fallback': bool(ai_response.get('fallback', False)),
+            },
+        ))
+
     refund_signal = has_refund_signal(category, subject, message, ai_triage)
     cancel_signal = has_cancel_signal(category, subject, message, ai_triage)
+    needs_admin_review = _support_needs_admin(ai_response, category, refund_signal, cancel_signal)
     ai_triage.update({
         'refundSignal': refund_signal,
         'cancelSignal': cancel_signal,
+        'urgency': ai_response.get('urgency') or ai_triage.get('urgency') or 'normal',
+        'recommendedCategory': ai_response.get('recommendedCategory') or category,
+        'canResolve': _support_bool(ai_response.get('canResolve'), True),
+        'needsAdminReview': needs_admin_review,
+        'adminUrgent': needs_admin_review,
+        'shouldCreateTicket': _support_bool(ai_response.get('shouldCreateTicket'), True),
+        'escalationReason': ai_response.get('escalationReason') or (
+            'AI marked this ticket for admin review.'
+            if needs_admin_review else ''
+        ),
+        'supportConversation': conversation,
         'refundEligibilityStatus': (context.get('refundEligibility') or {}).get('status'),
         'retentionOfferEligible': bool((context.get('retentionOffer') or {}).get('eligible')),
     })
@@ -1441,7 +1559,7 @@ def create_support_ticket_endpoint():
             return jsonify({'error': 'Ticket was created but could not be loaded'}), 500
 
         notify_count = notify_admins(
-            'Refund Review Ticket' if refund_signal else 'New Support Ticket',
+            'Urgent Support Ticket' if needs_admin_review else ('Refund Review Ticket' if refund_signal else 'New Support Ticket'),
             f'{user["email"]}: {subject}',
             {
                 'ticket_id': str(ticket_id),
@@ -1449,6 +1567,10 @@ def create_support_ticket_endpoint():
                 'category': category,
                 'refund_signal': refund_signal,
                 'cancel_signal': cancel_signal,
+                'admin_urgent': needs_admin_review,
+                'urgency': ai_triage.get('urgency'),
+                'ai_can_resolve': ai_triage.get('canResolve'),
+                'escalation_reason': ai_triage.get('escalationReason'),
                 'refund_eligibility': context.get('refundEligibility'),
                 'retention_offer': context.get('retentionOffer'),
             },
@@ -1460,6 +1582,135 @@ def create_support_ticket_endpoint():
         return jsonify({
             'success': True,
             'ticket': normalized,
+            'adminNotificationsCreated': notify_count,
+            'adminEmailsSent': email_count,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/support/tickets/<ticket_id>/reply', methods=['POST'])
+@require_auth
+def user_reply_support_ticket(ticket_id):
+    user = request.current_user
+    data = request.get_json() or {}
+    message = (data.get('message') or '').strip()[:4000]
+    if not message:
+        return jsonify({'error': 'Reply message is required'}), 400
+
+    ticket = _support_ticket_with_user(ticket_id)
+    if not ticket or str(ticket.get('user_id')) != str(user['id']):
+        return jsonify({'error': 'Ticket not found'}), 404
+
+    context = get_user_support_context(user['id'])
+    category = normalize_ticket_category(ticket.get('category') or 'other')
+    subject = ticket.get('subject') or 'Support request'
+    ai_triage = parse_jsonish(ticket.get('ai_triage'), {})
+    conversation = ai_triage.get('supportConversation')
+    if not isinstance(conversation, list):
+        conversation = [
+            _support_conversation_item('user', ticket.get('message') or '', 'user', {'initial': True})
+        ]
+        if ticket.get('ai_suggested_reply'):
+            conversation.append(_support_conversation_item(
+                'assistant',
+                ticket.get('ai_suggested_reply'),
+                'support_ai',
+                {'restored': True},
+            ))
+
+    conversation.append(_support_conversation_item('user', message, 'user'))
+    ai_response = _run_support_ai(category, subject, message, context, conversation)
+    ai_reply = ai_response.get('reply') or 'Thanks. I sent this to support for review.'
+    conversation.append(_support_conversation_item(
+        'assistant',
+        ai_reply,
+        'support_ai',
+        {
+            'urgency': ai_response.get('urgency'),
+            'provider': ai_response.get('provider'),
+            'model': ai_response.get('model'),
+            'fallback': bool(ai_response.get('fallback', False)),
+        },
+    ))
+
+    refund_signal = has_refund_signal(category, subject, message, ai_triage)
+    cancel_signal = has_cancel_signal(category, subject, message, ai_triage)
+    needs_admin_review = _support_needs_admin(ai_response, category, refund_signal, cancel_signal)
+    ai_triage.update({
+        'refundSignal': bool(ai_triage.get('refundSignal') or refund_signal),
+        'cancelSignal': bool(ai_triage.get('cancelSignal') or cancel_signal),
+        'urgency': ai_response.get('urgency') or ai_triage.get('urgency') or 'normal',
+        'recommendedCategory': ai_response.get('recommendedCategory') or category,
+        'canResolve': _support_bool(ai_response.get('canResolve'), True),
+        'needsAdminReview': bool(ai_triage.get('needsAdminReview') or needs_admin_review),
+        'adminUrgent': bool(ai_triage.get('adminUrgent') or needs_admin_review),
+        'shouldCreateTicket': _support_bool(ai_response.get('shouldCreateTicket'), True),
+        'escalationReason': ai_response.get('escalationReason') or ai_triage.get('escalationReason') or '',
+        'supportConversation': conversation,
+    })
+
+    try:
+        refreshed = db.execute_returning(
+            """
+            UPDATE support_tickets
+            SET ai_summary = COALESCE(%s, ai_summary),
+                ai_suggested_reply = %s,
+                ai_triage = %s::jsonb,
+                last_ai_assisted_at = now(),
+                status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
+                closed_at = CASE WHEN status = 'closed' THEN NULL ELSE closed_at END,
+                updated_at = now()
+            WHERE id = %s AND user_id = %s
+            RETURNING *
+            """,
+            (
+                ai_response.get('summary'),
+                ai_reply,
+                json_dumps(ai_triage),
+                ticket_id,
+                user['id'],
+            ),
+        )
+        if not refreshed:
+            return jsonify({'error': 'Ticket could not be updated'}), 500
+
+        try:
+            db.call_function('create_user_notification', (
+                user['id'],
+                'support',
+                'AI Support Replied',
+                ai_reply[:900],
+                '/messages',
+                json_dumps({'ticket_id': ticket_id, 'support_ai_reply': True, 'rich_content': True}),
+            ))
+        except Exception:
+            pass
+
+        refreshed['user_email'] = ticket['user_email']
+        normalized = normalize_ticket_row(refreshed, context)
+        notify_count = 0
+        email_count = 0
+        if needs_admin_review:
+            notify_count = notify_admins(
+                'Urgent Support Follow-up',
+                f'{user["email"]}: {subject}',
+                {
+                    'ticket_id': ticket_id,
+                    'user_id': user['id'],
+                    'category': category,
+                    'admin_urgent': True,
+                    'urgency': ai_triage.get('urgency'),
+                    'escalation_reason': ai_triage.get('escalationReason'),
+                },
+                'refund' if refund_signal else 'support',
+            )
+            email_count = _send_support_admin_emails(normalized, context, refund_signal)
+
+        return jsonify({
+            'success': True,
+            'ticket': normalized,
+            'reply': ai_reply,
             'adminNotificationsCreated': notify_count,
             'adminEmailsSent': email_count,
         })

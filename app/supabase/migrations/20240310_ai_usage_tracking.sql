@@ -233,9 +233,9 @@ INSERT INTO plan_config (
   can_use_ai, can_choose_provider, can_choose_model
 ) VALUES 
   ('trial', 'Free Trial', '7-day free trial with limited AI access', 5, 1, true, false, false),
-  ('monthly', 'Premium Monthly', 'Full access with AI interview practice', 20, 5, true, true, true),
-  ('lifetime', 'Lifetime Access', 'Full access forever with highest limits', 50, 10, true, true, true),
-  ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days', 20, 5, true, true, true)
+  ('monthly', 'Premium Monthly', 'Full access with 20 daily Robin chats', 20, 1, true, true, true),
+  ('lifetime', 'Lifetime Access', 'Full access forever with 30 daily Robin chats', 30, 1, true, true, true),
+  ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days with 20 daily Robin chats', 20, 1, true, true, true)
 ON CONFLICT (plan_type) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,

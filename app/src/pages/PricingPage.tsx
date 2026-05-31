@@ -286,9 +286,8 @@ function PricingCard({ plan, isCurrentPlan, onSelect, isProcessing }: PricingCar
         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
           Robin Practice Limits
         </p>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-800 font-semibold">{plan.aiLimits.maxTurnsPerSession} Robin chats/session</span>
-          <span className="text-slate-800 font-semibold">{plan.aiLimits.maxSessionsPerDay} Robin sessions/day</span>
+        <div className="flex justify-center text-sm">
+          <span className="text-slate-800 font-semibold">{plan.aiLimits.maxTurnsPerSession} daily Robin chats</span>
         </div>
       </div>
 

@@ -282,18 +282,18 @@ BEGIN
     RETURN;
   END IF;
   
-  -- Check session limit
-  IF v_usage_record.sessions_count >= v_max_sessions THEN
+  -- Check daily Robin chat limit
+  IF v_usage_record.total_turns >= v_max_turns THEN
     RETURN QUERY SELECT 
       false,
-      format('Daily session limit reached (%s per day)', v_max_sessions),
+      format('Daily Robin chat limit reached (%s per day)', v_max_turns),
       v_plan_type,
       v_max_sessions,
       v_max_turns,
       v_usage_record.sessions_count,
       v_usage_record.total_turns,
-      0,
-      GREATEST(0, v_max_turns - v_usage_record.total_turns);
+      GREATEST(0, v_max_sessions - v_usage_record.sessions_count),
+      0;
     RETURN;
   END IF;
   

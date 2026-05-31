@@ -42,6 +42,7 @@ interface UserSubscription {
 
 interface AIUsageStatus {
   dailySessionCount: number;
+  dailyTurnCount: number;
   currentSessionTurnCount: number;
   hasActiveSession: boolean;
   activeSessionId: string | null;
@@ -302,6 +303,7 @@ async function getAIUsageStatus(
     // Anonymous users have no persisted usage
     return {
       dailySessionCount: 0,
+      dailyTurnCount: 0,
       currentSessionTurnCount: 0,
       hasActiveSession: false,
       activeSessionId: null,
@@ -314,6 +316,18 @@ async function getAIUsageStatus(
   
   if (countError) {
     console.error('Failed to get session count:', countError);
+  }
+
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const { count: dailyTurnCount, error: turnCountError } = await supabase
+    .from('ai_interview_turns')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', todayStart.toISOString());
+
+  if (turnCountError) {
+    console.error('Failed to get daily turn count:', turnCountError);
   }
   
   // Get current session if provided
@@ -337,6 +351,7 @@ async function getAIUsageStatus(
   
   return {
     dailySessionCount: sessionCount || 0,
+    dailyTurnCount: dailyTurnCount || 0,
     currentSessionTurnCount: currentTurnCount,
     hasActiveSession,
     activeSessionId,
@@ -515,22 +530,22 @@ async function enforcePlanLimits(
   // 7. Get current usage status
   const usage = await getAIUsageStatus(supabase, userId, request.sessionId);
   
-  // 8. Check daily session limit
-  if (!usage.hasActiveSession && usage.dailySessionCount >= planConfig.max_sessions_per_day) {
+  // 8. Check daily Robin chat limit
+  if (usage.dailyTurnCount >= planConfig.max_turns_per_session) {
     return {
       allowed: false,
       error: {
         code: ERROR_CODES.PLAN_LIMIT_REACHED,
-        message: `Daily session limit reached (${planConfig.max_sessions_per_day})`,
-        userMessage: `You've reached your daily limit of ${planConfig.max_sessions_per_day} AI session${planConfig.max_sessions_per_day === 1 ? '' : 's'}. Upgrade for more sessions or try again tomorrow.`,
+        message: `Daily Robin chat limit reached (${planConfig.max_turns_per_session})`,
+        userMessage: `You've reached your daily limit of ${planConfig.max_turns_per_session} Robin chats. Upgrade for more daily chats or try again tomorrow.`,
         upgradeRecommended: true,
       },
       effectivePlan,
     };
   }
   
-  // 9. Check turn limit for current session
-  const turnsRemaining = planConfig.max_turns_per_session - request.turnNumber;
+  // 9. Check legacy per-session turn limit for the active interview UI
+  const turnsRemaining = planConfig.max_turns_per_session - usage.dailyTurnCount - 1;
   
   if (request.turnNumber > planConfig.max_turns_per_session) {
     return {
@@ -538,7 +553,7 @@ async function enforcePlanLimits(
       error: {
         code: ERROR_CODES.SESSION_LIMIT_REACHED,
         message: `Turn limit reached (${planConfig.max_turns_per_session})`,
-        userMessage: `You've reached the limit of ${planConfig.max_turns_per_session} questions for this session. Start a new session or upgrade for longer interviews.`,
+        userMessage: `You've reached the daily limit of ${planConfig.max_turns_per_session} Robin chats. Upgrade for more daily chats or try again tomorrow.`,
         upgradeRecommended: true,
       },
       effectivePlan,

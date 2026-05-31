@@ -20,7 +20,7 @@ export function ReadinessCheckPage({ onBack }: ReadinessCheckPageProps) {
           Back to Dashboard
         </Button>
         
-        <ReadinessCheck onComplete={onBack} />
+        <ReadinessCheck />
       </div>
     </div>
   );

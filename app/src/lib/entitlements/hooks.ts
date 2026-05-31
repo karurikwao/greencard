@@ -98,7 +98,7 @@ export function useAISession() {
   // Derive session permissions from entitlements
   const canStartSession = useMemo(() => {
     if (!entitlements) return false;
-    return entitlements.aiUsage.allowed && entitlements.aiUsage.sessionsRemaining > 0;
+    return entitlements.aiUsage.allowed && entitlements.aiUsage.turnsRemaining > 0;
   }, [entitlements]);
 
   const canContinueSession = useMemo(() => {

@@ -12,6 +12,42 @@ import type { AIProvider, AIModelOption, AIProviderConfig } from './types';
 // ============================================================================
 
 export const REGISTERED_MODELS: AIModelOption[] = [
+  // Unified OpenAI-compatible gateway
+  {
+    provider: 'unified',
+    modelId: 'auto',
+    displayName: 'Unified Auto Router',
+    description: 'Routes to the best available model from the configured OpenAI-compatible proxy',
+    tier: 'budget',
+    enabled: true,
+    defaultForProvider: true,
+    defaultForInterview: true,
+    maxTokens: 4096,
+    contextWindow: 128000,
+  },
+  {
+    provider: 'unified',
+    modelId: 'gemini-2.5-flash-lite',
+    displayName: 'Gemini Flash Lite via Unified',
+    description: 'Fast low-cost model exposed through the unified LLM proxy',
+    tier: 'budget',
+    enabled: true,
+    defaultForProvider: false,
+    maxTokens: 4096,
+    contextWindow: 1048576,
+  },
+  {
+    provider: 'unified',
+    modelId: 'deepseek-ai/deepseek-v4-flash',
+    displayName: 'DeepSeek V4 Flash via Unified',
+    description: 'DeepSeek fallback model exposed through the unified LLM proxy',
+    tier: 'standard',
+    enabled: true,
+    defaultForProvider: false,
+    maxTokens: 4096,
+    contextWindow: 131072,
+  },
+
   // OpenAI Models
   {
     provider: 'openai',
@@ -126,6 +162,13 @@ export const REGISTERED_MODELS: AIModelOption[] = [
 // ============================================================================
 
 export const PROVIDER_CONFIGS: Record<AIProvider, AIProviderConfig> = {
+  unified: {
+    provider: 'unified',
+    enabled: true,
+    apiKeyEnvVar: 'UNIFIED_LLM_API_KEY', // Server-side only (no VITE_ prefix)
+    defaultModel: 'auto',
+    fallbackModel: 'gemini-2.5-flash-lite',
+  },
   openai: {
     provider: 'openai',
     enabled: true,

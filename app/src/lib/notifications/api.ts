@@ -17,6 +17,54 @@ AdminSupportDraftResponse,
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+function normalizeNotification(row: Record<string, unknown>): UserNotification {
+return {
+id: String(row.id || ''),
+userId: String(row.userId || row.user_id || ''),
+type: (row.type || 'general') as UserNotification['type'],
+title: String(row.title || ''),
+message: String(row.message || ''),
+isRead: Boolean(row.isRead ?? row.is_read ?? false),
+actionUrl: (row.actionUrl || row.action_url || undefined) as string | undefined,
+metadata: (row.metadata || {}) as Record<string, unknown>,
+createdAt: String(row.createdAt || row.created_at || new Date().toISOString()),
+updatedAt: String(row.updatedAt || row.updated_at || row.createdAt || row.created_at || new Date().toISOString()),
+};
+}
+
+function normalizeBroadcast(row: Record<string, unknown>): BroadcastMessage {
+return {
+id: String(row.id || ''),
+title: String(row.title || ''),
+message: String(row.message || ''),
+audienceType: (row.audienceType || row.audience_type || 'all_users') as BroadcastMessage['audienceType'],
+isActive: Boolean(row.isActive ?? row.is_active ?? true),
+sentCount: Number(row.sentCount ?? row.sent_count ?? 0),
+scheduledAt: (row.scheduledAt || row.scheduled_at || null) as string | null,
+sendEmail: Boolean(row.sendEmail ?? row.send_email ?? true),
+createdBy: (row.createdBy || row.created_by || undefined) as string | undefined,
+createdAt: String(row.createdAt || row.created_at || new Date().toISOString()),
+updatedAt: String(row.updatedAt || row.updated_at || row.createdAt || row.created_at || new Date().toISOString()),
+};
+}
+
+async function getJson<T>(path: string): Promise<{ data: T | null; error: string | null }> {
+const token = getToken();
+const headers: Record<string, string> = {};
+if (token) headers.Authorization = `Bearer ${token}`;
+
+try {
+const response = await fetch(`${API_URL}${path}`, { headers });
+const payload = await response.json().catch(() => ({}));
+if (!response.ok) {
+return { data: null, error: payload.error || response.statusText || 'Request failed' };
+}
+return { data: payload as T, error: null };
+} catch (err) {
+return { data: null, error: err instanceof Error ? err.message : 'Network error' };
+}
+}
+
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<{ data: T | null; error: string | null }> {
 const token = getToken();
 const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -42,6 +90,14 @@ return { data: null, error: err instanceof Error ? err.message : 'Network error'
 // Notifications API
 // ============================================================================
 
+async function publishDueBroadcasts(): Promise<void> {
+try {
+await postJson('/api/broadcasts/publish-due', {});
+} catch {
+// Best effort only; notification loading should never fail because the scheduler ping failed.
+}
+}
+
 /**
 * Get user's notifications
 */
@@ -51,6 +107,7 @@ data?: UserNotification[];
 error?: string;
 }> {
 try {
+await publishDueBroadcasts();
 const { data, error } = await apiClient
 .from('user_notifications')
 .select('*')
@@ -61,7 +118,7 @@ console.error('Error fetching notifications:', error);
 return { success: false, error: error.message };
 }
 
-return { success: true, data: data as UserNotification[] };
+return { success: true, data: ((data as Record<string, unknown>[]) || []).map(normalizeNotification) };
 } catch (err) {
 console.error('Error fetching notifications:', err);
 return {
@@ -80,6 +137,7 @@ count?: number;
 error?: string;
 }> {
 try {
+await publishDueBroadcasts();
 const { data, error } = await apiClient.rpc('get_unread_notification_count', {});
 
 if (error) {
@@ -164,17 +222,14 @@ data?: BroadcastMessage[];
 error?: string;
 }> {
 try {
-const { data, error } = await apiClient
-.from('broadcast_messages')
-.select('*')
-.order('created_at', { ascending: false });
+const { data, error } = await getJson<{ broadcasts?: Record<string, unknown>[] }>('/api/admin/broadcasts');
 
 if (error) {
 console.error('Error fetching broadcasts:', error);
-return { success: false, error: error.message };
+return { success: false, error };
 }
 
-return { success: true, data: data as BroadcastMessage[] };
+return { success: true, data: ((data?.broadcasts || []) as Record<string, unknown>[]).map(normalizeBroadcast) };
 } catch (err) {
 console.error('Error fetching broadcasts:', err);
 return {
@@ -191,27 +246,26 @@ export async function createBroadcast(
 input: CreateBroadcastInput
 ): Promise<{ success: boolean; data?: BroadcastMessage; error?: string }> {
 try {
-const { data: user } = await apiClient.auth.getUser();
-if (!user) {
-return { success: false, error: 'Not authenticated' };
-}
-
-const { data, error } = await apiClient
-.from('broadcast_messages')
-.insert({
+const { data, error } = await postJson<{ success: boolean; broadcast?: Record<string, unknown>; sentCount?: number }>(
+'/api/admin/broadcasts',
+{
 title: input.title,
 message: input.message,
-audience_type: input.audienceType,
-created_by: user.id,
-})
-.single();
+audienceType: input.audienceType,
+scheduledAt: input.scheduledAt || null,
+sendEmail: input.sendEmail ?? true,
+publishNow: input.publishNow ?? true,
+}
+);
 
 if (error) {
 console.error('Error creating broadcast:', error);
-return { success: false, error: error.message };
+return { success: false, error };
 }
 
-return { success: true, data: data as BroadcastMessage };
+if (!data?.broadcast) return { success: false, error: 'Broadcast could not be created.' };
+
+return { success: true, data: normalizeBroadcast(data.broadcast) };
 } catch (err) {
 console.error('Error creating broadcast:', err);
 return {
@@ -228,16 +282,17 @@ export async function publishBroadcast(
 broadcastId: string
 ): Promise<{ success: boolean; sentCount?: number; error?: string }> {
 try {
-const { data, error } = await apiClient.rpc('publish_broadcast', {
-broadcastId,
-});
+const { data, error } = await postJson<{ success: boolean; sentCount?: number }>(
+`/api/admin/broadcasts/${broadcastId}/publish`,
+{}
+);
 
 if (error) {
 console.error('Error publishing broadcast:', error);
-return { success: false, error: error.message };
+return { success: false, error };
 }
 
-  return { success: true, sentCount: (data as number) || 0 };
+  return { success: true, sentCount: data?.sentCount || 0 };
 } catch (err) {
 console.error('Error publishing broadcast:', err);
 return {
@@ -291,6 +346,8 @@ adminReply: (row.adminReply || row.admin_reply || undefined) as string | undefin
 aiSummary: (row.aiSummary || row.ai_summary || undefined) as string | undefined,
 aiSuggestedReply: (row.aiSuggestedReply || row.ai_suggested_reply || undefined) as string | undefined,
 aiTriage: (row.aiTriage || row.ai_triage || undefined) as Record<string, unknown> | undefined,
+aiConversation: (row.aiConversation || row.ai_conversation || []) as SupportTicket['aiConversation'],
+adminUrgent: Boolean(row.adminUrgent ?? row.admin_urgent ?? false),
 repliedBy: (row.repliedBy || row.replied_by || undefined) as string | undefined,
 repliedAt: (row.repliedAt || row.replied_at || undefined) as string | undefined,
 closedAt: (row.closedAt || row.closed_at || undefined) as string | undefined,
@@ -392,6 +449,46 @@ return { success: false, error: error.message };
 return { success: true, data: data as SupportAiAssistResponse };
 } catch (err) {
 console.error('Error asking support AI:', err);
+return {
+success: false,
+error: err instanceof Error ? err.message : 'Unknown error',
+};
+}
+}
+
+/**
+* Send a user follow-up reply to a support ticket and receive the next AI answer.
+*/
+export async function replyToSupportTicket(
+ticketId: string,
+message: string
+): Promise<{ success: boolean; data?: SupportTicket; reply?: string; error?: string }> {
+try {
+const { data: user } = await apiClient.auth.getUser();
+if (!user) {
+return { success: false, error: 'Not authenticated' };
+}
+
+const { data, error } = await postJson<{ success: boolean; ticket?: Record<string, unknown>; reply?: string }>(
+`/api/support/tickets/${ticketId}/reply`,
+{ message }
+);
+
+if (error) {
+return { success: false, error };
+}
+
+if (!data?.success || !data.ticket) {
+return { success: false, error: 'Reply was sent but the ticket could not be loaded.' };
+}
+
+return {
+success: true,
+data: normalizeTicket(data.ticket),
+reply: data.reply,
+};
+} catch (err) {
+console.error('Error replying to support ticket:', err);
 return {
 success: false,
 error: err instanceof Error ? err.message : 'Unknown error',

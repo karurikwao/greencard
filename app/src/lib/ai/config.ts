@@ -233,17 +233,17 @@ export function checkUsageLimits(
   const limits = getPlanAiLimits(newPlan);
   const today = getTodayUsage();
   
-  if (today.sessions >= limits.maxSessionsPerDay) {
+  if (today.totalTurns >= limits.maxTurnsPerSession) {
     return {
       allowed: false,
-      reason: `Daily session limit reached (${limits.maxSessionsPerDay} per day)`,
+      reason: `Daily Robin chat limit reached (${limits.maxTurnsPerSession} per day)`,
       remaining: 0,
     };
   }
   
   return {
     allowed: true,
-    remaining: limits.maxSessionsPerDay - today.sessions,
+    remaining: Math.max(0, limits.maxTurnsPerSession - today.totalTurns),
   };
 }
 
@@ -260,10 +260,10 @@ export function checkAIUsageLimits(plan: PlanType): {
   const limits = getPlanAiLimits(plan);
   const today = getTodayUsage();
   
-  if (today.sessions >= limits.maxSessionsPerDay) {
+  if (today.totalTurns >= limits.maxTurnsPerSession) {
     return {
       allowed: false,
-      reason: `Daily session limit reached (${limits.maxSessionsPerDay} per day)`,
+      reason: `Daily Robin chat limit reached (${limits.maxTurnsPerSession} per day)`,
       remaining: 0,
       remainingTurns: 0,
     };
@@ -271,8 +271,8 @@ export function checkAIUsageLimits(plan: PlanType): {
   
   return {
     allowed: true,
-    remaining: limits.maxSessionsPerDay - today.sessions,
-    remainingTurns: limits.maxTurnsPerSession,
+    remaining: Math.max(0, limits.maxTurnsPerSession - today.totalTurns),
+    remainingTurns: Math.max(0, limits.maxTurnsPerSession - today.totalTurns),
   };
 }
 

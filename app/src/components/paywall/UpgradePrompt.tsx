@@ -357,11 +357,7 @@ export function UpgradePrompt({
                       </li>
                       <li className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                         <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <span>{plan.aiLimits.maxTurnsPerSession} Robin chats/session</span>
-                      </li>
-                      <li className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                        <Check className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <span>{plan.aiLimits.maxSessionsPerDay} Robin sessions/day</span>
+                        <span>{plan.aiLimits.maxTurnsPerSession} daily Robin chats</span>
                       </li>
                     </ul>
 

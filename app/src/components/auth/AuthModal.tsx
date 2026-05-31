@@ -26,6 +26,7 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: 'login' | 'signup';
+  onAuthenticated?: () => void;
 }
 
 // Google icon component
@@ -40,7 +41,7 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticated }: AuthModalProps) {
   const { signIn, signUp, resetPassword, isAuthenticated } = useOptionalAuth();
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,6 +64,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
   
   // OAuth state
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+
+  const finishAuthenticated = () => {
+    if (onAuthenticated) {
+      onAuthenticated();
+      return;
+    }
+    onClose();
+  };
 
   useEffect(() => {
     const storedCode = getStoredReferralCode();
@@ -98,7 +107,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     if (error) {
       setError(error.message);
     } else {
-      onClose();
+      finishAuthenticated();
     }
     
     setIsLoading(false);
@@ -136,8 +145,6 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     if (error) {
       setError(error.message);
     } else {
-      setSuccess('Account created. You are signed in and your progress can now sync across devices.');
-      
       // Record referral event if user was created and has promo code
       if (data?.user && promoCode) {
         await recordSignupEvent(data.user.id, {
@@ -146,6 +153,8 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
           last_name: lastName,
         });
       }
+      setSuccess('Account created. You are signed in and your progress can now sync across devices.');
+      finishAuthenticated();
     }
     
     setIsLoading(false);
@@ -183,7 +192,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
             <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-slate-950 mb-2">You're signed in!</h2>
             <p className="text-slate-700 mb-4">Your progress will be saved to the cloud.</p>
-            <Button onClick={onClose} className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white hover:from-blue-800 hover:to-cyan-700">
+            <Button onClick={finishAuthenticated} className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white hover:from-blue-800 hover:to-cyan-700">
               Continue
             </Button>
           </CardContent>
@@ -205,7 +214,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
         <CardHeader>
           <CardTitle className="text-xl font-semibold text-slate-950">
-            {showResetForm ? 'Reset Password' : activeTab === 'signup' ? 'Create your free account' : 'Welcome'}
+            {showResetForm ? 'Reset Password' : activeTab === 'signup' ? 'Sign up' : 'Sign in'}
           </CardTitle>
           <CardDescription className="text-slate-700">
             {showResetForm 
@@ -268,9 +277,19 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
             </form>
           ) : (
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'signup')}>
-              <TabsList className="grid w-full grid-cols-2 mb-6 bg-white/80 p-1 shadow-inner ring-1 ring-blue-100">
-                <TabsTrigger value="login">Sign In</TabsTrigger>
-                <TabsTrigger value="signup">Create Account</TabsTrigger>
+              <TabsList className="mb-6 grid h-12 w-full grid-cols-2 rounded-xl border border-blue-200 bg-blue-50/80 p-1 shadow-inner">
+                <TabsTrigger
+                  value="login"
+                  className="rounded-lg text-base font-extrabold text-blue-900 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-700 data-[state=active]:to-cyan-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-200"
+                >
+                  Sign In
+                </TabsTrigger>
+                <TabsTrigger
+                  value="signup"
+                  className="rounded-lg text-base font-extrabold text-blue-900 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-700 data-[state=active]:to-cyan-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-200"
+                >
+                  Sign Up
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="login">
@@ -468,7 +487,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                     className="w-full bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700"
                     disabled={isLoading}
                   >
-                    {isLoading ? 'Creating account...' : 'Create Account'}
+                    {isLoading ? 'Signing up...' : 'Sign Up'}
                   </Button>
 
                   {/* OAuth Sign Up Options */}
@@ -493,7 +512,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
                   </Button>
 
                   <p className="text-xs text-slate-600 text-center">
-                    By creating an account, you agree to our Terms of Service and Privacy Policy.
+                    By signing up, you agree to our Terms of Service and Privacy Policy.
                   </p>
                 </form>
               </TabsContent>

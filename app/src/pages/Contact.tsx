@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 
 export function Contact() {
+  const backHref = typeof window !== 'undefined' && localStorage.getItem('auth_token') ? '/dashboard' : '/';
+  const backLabel = backHref === '/dashboard' ? 'Back to Dashboard' : 'Back to Home';
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -38,9 +40,9 @@ export function Contact() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <a href="/" className="flex items-center gap-2 text-slate-700 hover:text-blue-600 transition-colors">
+            <a href={backHref} className="flex items-center gap-2 text-slate-700 hover:text-blue-600 transition-colors">
               <ArrowLeft className="h-5 w-5" />
-              <span className="font-semibold">Back to Home</span>
+              <span className="font-semibold">{backLabel}</span>
             </a>
             <div className="flex items-center gap-2">
               <Heart className="h-6 w-6 text-rose-500" />

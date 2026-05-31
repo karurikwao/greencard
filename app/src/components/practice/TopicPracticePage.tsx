@@ -3,7 +3,7 @@
  * Main practice interface showing one question at a time
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, List, CheckCircle, X, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,6 +47,8 @@ export function TopicPracticePage({
     toggleSaveForLater,
   } = usePractice();
   const { isAuthenticated } = useOptionalAuth();
+  const questionSectionRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToQuestionRef = useRef(false);
 
   // Get persisted index or start at 0
   const [currentIndex, setLocalIndex] = useState(() => getCurrentIndex(topic.id));
@@ -58,6 +60,20 @@ export function TopicPracticePage({
   useEffect(() => {
     setCurrentIndex(topic.id, currentIndex);
   }, [currentIndex, topic.id, setCurrentIndex]);
+
+  useEffect(() => {
+    if (!shouldScrollToQuestionRef.current) return;
+    shouldScrollToQuestionRef.current = false;
+
+    const scrollTimer = window.setTimeout(() => {
+      questionSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 50);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [currentIndex]);
 
   const currentQuestion = topic.questions[currentIndex];
   const totalQuestions = topic.questions.length;
@@ -81,20 +97,37 @@ export function TopicPracticePage({
   }, [currentQuestion, topic, allTopics]);
 
   // Navigation handlers
+  const currentTopicIndex = useMemo(
+    () => allTopics.findIndex((candidate) => candidate.id === topic.id),
+    [allTopics, topic.id]
+  );
+  const nextTopic = currentTopicIndex >= 0 ? allTopics[currentTopicIndex + 1] : undefined;
+  const canMoveToNextTopic = Boolean(nextTopic && onSelectQuestion);
+  const isAtLastQuestion = currentIndex >= totalQuestions - 1;
+
   const goToNext = useCallback(() => {
     if (currentIndex < totalQuestions - 1) {
+      shouldScrollToQuestionRef.current = true;
       setLocalIndex(prev => prev + 1);
+      return;
     }
-  }, [currentIndex, totalQuestions]);
+
+    if (nextTopic && onSelectQuestion) {
+      shouldScrollToQuestionRef.current = true;
+      onSelectQuestion(nextTopic.id, 0);
+    }
+  }, [currentIndex, nextTopic, onSelectQuestion, totalQuestions]);
 
   const goToPrevious = useCallback(() => {
     if (currentIndex > 0) {
+      shouldScrollToQuestionRef.current = true;
       setLocalIndex(prev => prev - 1);
     }
   }, [currentIndex]);
 
   const goToQuestion = useCallback((index: number) => {
     if (index >= 0 && index < totalQuestions) {
+      shouldScrollToQuestionRef.current = true;
       setLocalIndex(index);
       setIsQuestionListOpen(false);
     }
@@ -247,11 +280,13 @@ export function TopicPracticePage({
           )}
 
           {/* Question Card */}
-          <QuestionCard
-            question={currentQuestion}
-            questionNumber={currentIndex + 1}
-            totalQuestions={totalQuestions}
-          />
+          <div ref={questionSectionRef} className="scroll-mt-[18rem] sm:scroll-mt-36">
+            <QuestionCard
+              question={currentQuestion}
+              questionNumber={currentIndex + 1}
+              totalQuestions={totalQuestions}
+            />
+          </div>
 
           {/* Comfort Actions */}
           <Card className="border-2 border-blue-100 bg-gradient-to-br from-white via-blue-50/40 to-emerald-50/30 shadow-xl shadow-slate-200/80">
@@ -270,7 +305,7 @@ export function TopicPracticePage({
                         Progress saved on this device
                       </p>
                       <p className="mt-1 text-sm text-blue-900">
-                        Create a free account when you are ready, and the app can remember your answers across devices.
+                        Sign up when you are ready, and the app can remember your answers across devices.
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -280,7 +315,7 @@ export function TopicPracticePage({
                         className="bg-blue-700 hover:bg-blue-800 text-white"
                       >
                         <UserPlus className="mr-2 h-4 w-4" />
-                        Free account
+                        Sign up
                       </Button>
                       <Button
                         size="sm"
@@ -353,10 +388,10 @@ export function TopicPracticePage({
 
             <Button
               onClick={goToNext}
-              disabled={currentIndex >= totalQuestions - 1}
+              disabled={isAtLastQuestion && !canMoveToNextTopic}
               className="min-w-[100px] bg-gradient-to-r from-blue-600 to-cyan-600 font-bold text-white shadow-md shadow-blue-200 hover:from-blue-700 hover:to-cyan-700"
             >
-              Next
+              {isAtLastQuestion && canMoveToNextTopic ? 'Next Topic' : 'Next'}
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>

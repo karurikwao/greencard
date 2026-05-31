@@ -42,6 +42,8 @@ export interface BroadcastMessage {
   audienceType: BroadcastAudience;
   isActive: boolean;
   sentCount: number;
+  scheduledAt?: string | null;
+  sendEmail?: boolean;
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
@@ -51,14 +53,17 @@ export interface CreateBroadcastInput {
   title: string;
   message: string;
   audienceType: BroadcastAudience;
+  scheduledAt?: string | null;
+  sendEmail?: boolean;
+  publishNow?: boolean;
 }
 
 export const BROADCAST_AUDIENCE_LABELS: Record<BroadcastAudience, string> = {
   all_users: 'All Users',
   trial_users: 'Trial Users',
-  premium_users: 'Premium Users',
+  premium_users: 'Pro / Paid Members',
   expired_users: 'Expired Subscriptions',
-  free_users: 'Free Users',
+  free_users: 'Free Members',
 };
 
 // ============================================================================
@@ -79,11 +84,21 @@ export interface SupportTicket {
   aiSummary?: string;
   aiSuggestedReply?: string;
   aiTriage?: Record<string, unknown>;
+  aiConversation?: SupportConversationMessage[];
+  adminUrgent?: boolean;
   repliedBy?: string;
   repliedAt?: string;
   closedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SupportConversationMessage {
+  role: 'user' | 'assistant' | 'admin';
+  content: string;
+  source?: string;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AdminSupportTicket extends SupportTicket {
@@ -143,6 +158,9 @@ export interface SupportAiAssistResponse {
   recommendedCategory: TicketCategory;
   shouldCreateTicket: boolean;
   urgency: 'low' | 'normal' | 'high';
+  canResolve?: boolean;
+  needsAdminReview?: boolean;
+  escalationReason?: string;
   provider: string;
   model?: string | null;
   fallback?: boolean;

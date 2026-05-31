@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, Bot, HelpCircle, Plus, MessageSquare, Clock, CheckCircle, Send, Sparkles } from 'lucide-react';
+import { AlertCircle, Bot, HelpCircle, Plus, MessageSquare, Clock, CheckCircle, Send, Sparkles, RefreshCw, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,10 +14,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { RichMessageContent } from '@/components/messages/RichMessageContent';
 import { cn } from '@/lib/utils';
-import type { SupportTicket, TicketCategory, TicketStatus } from '@/lib/notifications';
+import type { SupportTicket, TicketCategory, TicketStatus, UserNotification } from '@/lib/notifications';
 import { TICKET_CATEGORIES, TICKET_STATUS_LABELS } from '@/lib/notifications';
-import { getUserTickets, createSupportTicket, supportAiAssist } from '@/lib/notifications/api';
+import { getUserNotifications, getUserTickets, createSupportTicket, supportAiAssist, replyToSupportTicket } from '@/lib/notifications/api';
 import type { SupportAiAssistResponse } from '@/lib/notifications';
 
 
@@ -51,6 +52,11 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
   const [isAiAssisting, setIsAiAssisting] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiAssist, setAiAssist] = useState<SupportAiAssistResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [messageFallbacks, setMessageFallbacks] = useState<UserNotification[]>([]);
+  const [ticketReply, setTicketReply] = useState('');
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -59,9 +65,26 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
 
   const loadTickets = async () => {
     setIsLoading(true);
-    const result = await getUserTickets();
+    const [result, notificationResult] = await Promise.all([
+      getUserTickets(),
+      getUserNotifications(),
+    ]);
+
+    if (notificationResult.success && notificationResult.data) {
+      setMessageFallbacks(notificationResult.data.filter(notification => {
+        const haystack = `${notification.title} ${notification.message}`.toLowerCase();
+        return notification.type === 'support'
+          || notification.type === 'refund'
+          || haystack.includes('ticket')
+          || haystack.includes('refund');
+      }).slice(0, 6));
+    }
+
     if (result.success && result.data) {
       setTickets(result.data);
+      setLoadError(null);
+    } else if (result.error) {
+      setLoadError(result.error);
     }
     setIsLoading(false);
   };
@@ -81,17 +104,28 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
       aiTriage: aiAssist ? {
         urgency: aiAssist.urgency,
         provider: aiAssist.provider,
+        model: aiAssist.model,
         recommendedCategory: aiAssist.recommendedCategory,
+        shouldCreateTicket: aiAssist.shouldCreateTicket,
+        canResolve: aiAssist.canResolve,
+        needsAdminReview: aiAssist.needsAdminReview,
+        escalationReason: aiAssist.escalationReason,
         fallback: aiAssist.fallback || false,
       } : undefined,
     });
 
     if (result.success) {
+      if (result.data) {
+        setTickets(prev => [result.data!, ...prev.filter(ticket => ticket.id !== result.data!.id)]);
+      }
       setNewTicket({ subject: '', category: '', message: '' });
       setAiAssist(null);
       setAiError(null);
       setIsCreateDialogOpen(false);
-      loadTickets();
+      window.dispatchEvent(new CustomEvent('dashboard-messages-refresh'));
+      void loadTickets();
+    } else if (result.error) {
+      setAiError(result.error);
     }
     setIsSubmitting(false);
   };
@@ -119,7 +153,12 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
         setNewTicket(prev => ({ ...prev, category: result.data!.recommendedCategory }));
       }
     } else {
-      setAiError(result.error || 'AI support is temporarily unavailable.');
+      const errorMessage = result.error || 'AI support is temporarily unavailable.';
+      setAiError(
+        errorMessage.toLowerCase().includes('authentication')
+          ? 'Please sign in to save and submit a support ticket. You can still describe the issue here before signing in.'
+          : errorMessage
+      );
     }
     setIsAiAssisting(false);
   };
@@ -130,6 +169,30 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
       ...prev,
       message: `${prev.message.trim()}\n\nAI support notes:\n${aiAssist.reply}`.trim(),
     }));
+  };
+
+  const openTicketDetails = (ticket: SupportTicket) => {
+    setSelectedTicket(ticket);
+    setTicketReply('');
+    setReplyError(null);
+  };
+
+  const handleTicketReply = async () => {
+    if (!selectedTicket || !ticketReply.trim()) return;
+
+    setIsReplying(true);
+    setReplyError(null);
+    const result = await replyToSupportTicket(selectedTicket.id, ticketReply.trim());
+
+    if (result.success && result.data) {
+      setTickets(prev => prev.map(ticket => ticket.id === result.data!.id ? result.data! : ticket));
+      setSelectedTicket(result.data);
+      setTicketReply('');
+      window.dispatchEvent(new CustomEvent('dashboard-messages-refresh'));
+    } else {
+      setReplyError(result.error || 'Unable to send your reply.');
+    }
+    setIsReplying(false);
   };
 
   if (isLoading) {
@@ -158,13 +221,24 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
             </Badge>
           )}
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
-          setIsCreateDialogOpen(open);
-          if (!open) {
-            setAiAssist(null);
-            setAiError(null);
-          }
-        }}>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={loadTickets}
+            className="border-amber-200 bg-white font-bold text-amber-800 hover:bg-amber-50"
+          >
+            <RefreshCw className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) {
+              setAiAssist(null);
+              setAiError(null);
+            }
+          }}>
           <DialogTrigger asChild>
             <Button size="sm" className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700">
               <Plus className="w-4 h-4 mr-1" />
@@ -253,6 +327,11 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                       <Badge variant="secondary" className="capitalize">
                         {aiAssist.urgency} priority
                       </Badge>
+                      {aiAssist.needsAdminReview && (
+                        <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">
+                          Admin review
+                        </Badge>
+                      )}
                       <Button type="button" variant="ghost" size="sm" onClick={appendAiContext}>
                         Add to ticket
                       </Button>
@@ -280,18 +359,48 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </CardHeader>
       <CardContent className="pt-4">
+        {loadError && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            Tickets are syncing. Refreshing usually resolves this shortly.
+          </div>
+        )}
         <ScrollArea className="h-[300px]">
           {tickets.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-amber-300 bg-white/70 py-8 text-center text-slate-700">
-              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-sky-200 text-slate-900 shadow-sm">
-                <HelpCircle className="h-7 w-7" />
+            messageFallbacks.length > 0 ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-800">
+                  Recent refund and support messages are shown here while the ticket thread syncs.
+                </div>
+                {messageFallbacks.map((message) => (
+                  <div key={message.id} className="rounded-xl border border-amber-100 bg-white p-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                        <MessageSquare className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-extrabold text-slate-950">{message.title}</p>
+                        <p className="mt-1 line-clamp-3 text-sm font-medium text-slate-700">{message.message}</p>
+                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                          {new Date(message.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="font-semibold text-slate-950">No support tickets yet</p>
-              <p className="text-sm text-slate-700">Need help? Create a ticket and we'll assist you</p>
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-amber-300 bg-white/70 py-8 text-center text-slate-700">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-sky-200 text-slate-900 shadow-sm">
+                  <HelpCircle className="h-7 w-7" />
+                </div>
+                <p className="font-semibold text-slate-950">No support tickets yet</p>
+                <p className="text-sm text-slate-700">Need help? Create a ticket and we'll assist you</p>
+              </div>
+            )
           ) : (
             <div className="space-y-3">
               {tickets.map((ticket) => {
@@ -300,7 +409,7 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   <div
                     key={ticket.id}
                     className="flex gap-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                    onClick={() => setSelectedTicket(ticket)}
+                    onClick={() => openTicketDetails(ticket)}
                   >
                     <div className="flex-shrink-0">
                       <StatusIcon className={cn('w-5 h-5', {
@@ -317,6 +426,11 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                         <Badge variant="outline" className={cn('flex-shrink-0 text-xs', statusColors[ticket.status])}>
                           {TICKET_STATUS_LABELS[ticket.status]}
                         </Badge>
+                        {ticket.adminUrgent && (
+                          <Badge variant="outline" className="flex-shrink-0 border-rose-200 bg-rose-50 text-xs text-rose-700">
+                            Urgent
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-slate-600 mt-1 line-clamp-2">
                         {ticket.message}
@@ -351,6 +465,11 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                   <Badge variant="outline" className={statusColors[selectedTicket.status]}>
                     {TICKET_STATUS_LABELS[selectedTicket.status]}
                   </Badge>
+                  {selectedTicket.adminUrgent && (
+                    <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">
+                      Urgent admin review
+                    </Badge>
+                  )}
                 </div>
               </DialogHeader>
               <div className="space-y-4 px-6 py-4">
@@ -360,6 +479,41 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                     Submitted on {new Date(selectedTicket.createdAt).toLocaleString()}
                   </p>
                 </div>
+
+                {((selectedTicket.aiConversation?.length || 0) > 0 || selectedTicket.aiSuggestedReply) && (
+                  <div className="space-y-3 rounded-xl border border-cyan-200 bg-white/80 p-4 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-cyan-700" />
+                      <span className="text-sm font-semibold text-slate-900">AI support conversation</span>
+                    </div>
+                    <div className="space-y-3">
+                      {(selectedTicket.aiConversation?.length
+                        ? selectedTicket.aiConversation
+                        : [{ role: 'assistant' as const, content: selectedTicket.aiSuggestedReply || '', source: 'support_ai', createdAt: undefined }]
+                      ).filter(item => item.content).map((item, index) => {
+                        const isUser = item.role === 'user';
+                        return (
+                          <div key={`${item.role}-${index}-${item.createdAt || ''}`} className={cn(
+                            'rounded-xl border p-3',
+                            isUser
+                              ? 'border-slate-200 bg-slate-50'
+                              : 'border-cyan-100 bg-cyan-50/70'
+                          )}>
+                            <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+                              {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+                              <span>{isUser ? 'You' : 'AI support assistant'}</span>
+                            </div>
+                            {isUser ? (
+                              <p className="whitespace-pre-wrap text-sm text-slate-800">{item.content}</p>
+                            ) : (
+                              <RichMessageContent content={item.content} className="text-slate-800" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 
                 {selectedTicket.adminReply && (
                   <div className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm">
@@ -367,7 +521,7 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                       <CheckCircle className="w-4 h-4 text-blue-600" />
                       <span className="text-sm font-medium text-blue-900">Support Team Response</span>
                     </div>
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedTicket.adminReply}</p>
+                    <RichMessageContent content={selectedTicket.adminReply} className="text-slate-800" />
                     {selectedTicket.repliedAt && (
                       <p className="text-xs text-slate-400 mt-2">
                         Replied on {new Date(selectedTicket.repliedAt).toLocaleString()}
@@ -375,6 +529,45 @@ export function SupportTicketPanel({ className }: SupportTicketPanelProps) {
                     )}
                   </div>
                 )}
+
+                {replyError && (
+                  <div className="flex gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span>{replyError}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <Label htmlFor="ticket-reply" className="font-semibold text-slate-900">Reply to AI support</Label>
+                  <Textarea
+                    id="ticket-reply"
+                    placeholder="Add a follow-up question or share more details..."
+                    rows={3}
+                    value={ticketReply}
+                    onChange={(event) => setTicketReply(event.target.value)}
+                    className="border-slate-300 bg-white text-slate-950 placeholder:text-slate-500 focus-visible:ring-blue-500"
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={handleTicketReply}
+                      disabled={isReplying || !ticketReply.trim()}
+                      className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow-md shadow-blue-200 hover:from-blue-800 hover:to-cyan-700"
+                    >
+                      {isReplying ? (
+                        <>
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Send Reply
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
               <DialogFooter className="sticky bottom-0 border-t border-blue-100 bg-white/95 px-6 py-4 backdrop-blur">
                 <Button variant="outline" onClick={() => setSelectedTicket(null)}>

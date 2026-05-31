@@ -162,13 +162,7 @@ export function PlanStatusPanel({
               <Zap className="w-4 h-4 text-slate-400" />
               <span className="text-slate-600">Robin Practice Today</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <UsageMetric
-                label="Sessions"
-                used={aiUsage.sessionsUsed}
-                total={aiUsage.sessionsTotal}
-                remaining={aiUsage.sessionsRemaining}
-              />
+            <div className="grid grid-cols-1 gap-3">
               <UsageMetric
                 label="Chats"
                 used={aiUsage.turnsUsed}

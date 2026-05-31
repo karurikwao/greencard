@@ -96,17 +96,20 @@ def ai_interview_turn():
 @ai_bp.route('/support-assist', methods=['POST'])
 @optional_auth
 def support_assist():
+    user = request.current_user
     data = request.get_json() or {}
     category = (data.get('category') or 'other')[:40]
     subject = (data.get('subject') or '')[:200]
     message = (data.get('message') or '')[:4000]
+    conversation = data.get('conversation') or data.get('supportConversation') or []
 
     if not subject and not message:
         return jsonify({'error': 'Tell the assistant what you need help with first.'}), 400
 
+    context = get_user_support_context(user['id']) if user else {}
     provider = data.get('provider') or _select_default_provider()
     model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
-    messages = _build_support_messages(category, subject, message)
+    messages = _build_support_messages(category, subject, message, context, conversation)
 
     try:
         response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
@@ -437,22 +440,57 @@ def _default_model_for_provider(provider):
     }.get(provider, 'gpt-5-mini')
 
 
-def _build_support_messages(category, subject, message):
+def _build_support_messages(category, subject, message, context=None, conversation=None):
+    context = context if isinstance(context, dict) else {}
+    conversation = conversation if isinstance(conversation, list) else []
+    subscription = context.get('subscription') or {}
+    refund = context.get('refundEligibility') or {}
+    usage = context.get('usage') or {}
+    recent_conversation = []
+    for item in conversation[-8:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get('role') or 'user'
+        content = str(item.get('content') or '').strip()
+        if content:
+            recent_conversation.append(f"{role}: {content[:700]}")
+    conversation_text = '\n'.join(recent_conversation) or '(none)'
+    context_text = (
+        f"Plan: {subscription.get('planLabel') or 'Unknown'} "
+        f"({subscription.get('planType') or 'unknown'}, {subscription.get('status') or 'unknown'})\n"
+        f"Usage: {usage.get('questionsCompleted', 0)} questions practiced, "
+        f"{usage.get('mockInterviewsCompleted', 0)} mock interviews, "
+        f"{usage.get('totalPdfDownloads', 0)} PDF downloads\n"
+        f"Refund status signal: {refund.get('status') or 'unknown'} - {refund.get('note') or 'none'}"
+    ) if context else 'No signed-in account context is available.'
     system_prompt = (
         "You are InterviewReady support assistant. Help users with billing, refunds, account access, "
-        "technical problems, and app usage. Be factual, calm, and concise. Do not give legal advice. "
+        "technical problems, and app usage. The app includes Robin AI interview practice, premium PDF "
+        "downloads, readiness tools, timeline/practice dashboards, Stripe billing, refund requests, "
+        "and admin support messages. Be factual, calm, and concise. Do not give legal advice. "
         "For unauthorized-transaction or unclear-purchase claims, tell the user to submit a refund "
-        "request from the dashboard and to describe only accurate facts. Return only valid JSON with "
-        "keys: reply, summary, suggestedTicketSubject, recommendedCategory, shouldCreateTicket, urgency."
+        "request from the dashboard and to describe only accurate facts. If the problem needs a human "
+        "admin, say that you are escalating it and set needsAdminReview true. Never include internal "
+        "summary text or raw JSON in the reply. Return only valid JSON with keys: reply, summary, "
+        "suggestedTicketSubject, recommendedCategory, shouldCreateTicket, urgency, canResolve, "
+        "needsAdminReview, escalationReason."
     )
     user_prompt = f"""
 Category: {category}
 Subject: {subject or '(not provided)'}
+Account context:
+{context_text}
+
+Recent conversation:
+{conversation_text}
+
 User message:
 {message or '(not provided)'}
 
 Write a helpful support response and a short internal summary. recommendedCategory must be one of
 billing, refund, technical, account, feature_request, other. urgency must be low, normal, or high.
+canResolve should be false when a human admin must review account data, billing records, refunds,
+or anything you cannot safely resolve from the available context.
 """
     return [
         {'role': 'system', 'content': system_prompt},
@@ -460,7 +498,59 @@ billing, refund, technical, account, feature_request, other. urgency must be low
     ]
 
 
+def _extract_json_object(text):
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text or ''):
+        if char != '{':
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(text[index:])
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            continue
+    return {}
+
+
+def _extract_user_response(text):
+    cleaned = (text or '').strip()
+    lower = cleaned.lower()
+    markers = [
+        '**internal summary**',
+        'internal summary',
+        '**internal notes**',
+        'internal notes',
+        '{',
+    ]
+    start_markers = ['**user response**', 'user response:']
+    for marker in start_markers:
+        pos = lower.find(marker)
+        if pos >= 0:
+            cleaned = cleaned[pos + len(marker):].strip()
+            lower = cleaned.lower()
+            break
+    cut_positions = [lower.find(marker) for marker in markers if lower.find(marker) >= 0]
+    if cut_positions:
+        cleaned = cleaned[:min(cut_positions)].strip()
+    return cleaned.strip('`').strip()
+
+
+def _coerce_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {'true', 'yes', '1', 'y'}:
+            return True
+        if lowered in {'false', 'no', '0', 'n'}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
 def _normalize_support_response(response_text, provider, model, category):
+    user_response = _extract_user_response(response_text)
     try:
         cleaned = response_text.strip()
         if cleaned.startswith('```'):
@@ -468,14 +558,15 @@ def _normalize_support_response(response_text, provider, model, category):
             cleaned = cleaned.replace('json\n', '', 1).replace('json\r\n', '', 1)
         parsed = json.loads(cleaned)
     except Exception:
-        parsed = {}
+        parsed = _extract_json_object(response_text)
 
     if not isinstance(parsed, dict):
         parsed = {}
 
-    reply = parsed.get('reply') or response_text.strip()
+    reply = parsed.get('reply') or user_response or response_text.strip()
     if not reply:
         reply = _support_fallback_copy(category)
+    reply = _extract_user_response(reply) or reply
 
     recommended_category = parsed.get('recommendedCategory') or category or 'other'
     if recommended_category not in {'billing', 'refund', 'technical', 'account', 'feature_request', 'other'}:
@@ -484,14 +575,21 @@ def _normalize_support_response(response_text, provider, model, category):
     urgency = parsed.get('urgency') or 'normal'
     if urgency not in {'low', 'normal', 'high'}:
         urgency = 'normal'
+    needs_admin_review = _coerce_bool(parsed.get('needsAdminReview'), False)
+    can_resolve = _coerce_bool(parsed.get('canResolve'), not needs_admin_review)
+    if urgency == 'high':
+        needs_admin_review = True
 
     return {
         'reply': reply[:1800],
         'summary': (parsed.get('summary') or reply[:240])[:500],
         'suggestedTicketSubject': (parsed.get('suggestedTicketSubject') or 'Support request')[:120],
         'recommendedCategory': recommended_category,
-        'shouldCreateTicket': bool(parsed.get('shouldCreateTicket', True)),
+        'shouldCreateTicket': _coerce_bool(parsed.get('shouldCreateTicket'), True),
         'urgency': urgency,
+        'canResolve': can_resolve,
+        'needsAdminReview': needs_admin_review,
+        'escalationReason': (parsed.get('escalationReason') or '')[:400],
         'provider': provider,
         'model': model,
         'fallback': False,
@@ -524,6 +622,9 @@ def _support_fallback_response(category, subject, message, error_message):
         'recommendedCategory': category if category in {'billing', 'refund', 'technical', 'account', 'feature_request', 'other'} else 'other',
         'shouldCreateTicket': True,
         'urgency': 'high' if category == 'refund' else 'normal',
+        'canResolve': category not in {'refund', 'billing'},
+        'needsAdminReview': category in {'refund', 'billing'},
+        'escalationReason': 'AI provider fallback was used; support should review account-specific details.',
         'provider': 'fallback',
         'model': None,
         'fallback': True,

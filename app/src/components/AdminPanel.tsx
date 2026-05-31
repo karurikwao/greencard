@@ -586,7 +586,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
           </CardHeader>
           <CardContent>
             <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
-              This panel is only for existing admin users. To create a regular user account, close this panel and use Create free account on the homepage.
+              This panel is only for existing admin users. To create a regular user account, close this panel and use Sign up on the homepage.
             </div>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">

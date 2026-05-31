@@ -359,7 +359,7 @@ features: computeFeatureAccess('anonymous', false),
 function getAnonymousAIUsage(): AIServiceUsage {
 return {
 allowed: false,
-reason: 'Sign up to start your free trial and use AI practice',
+reason: 'Sign up to start your free trial and practice with Robin',
 planType: 'anonymous',
 maxSessionsPerDay: 0,
 maxTurnsPerSession: 0,

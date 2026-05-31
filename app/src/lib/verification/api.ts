@@ -40,6 +40,17 @@ notes?: string;
 environment?: VerificationEnvironment;
 }
 
+type VerificationCodeRpcValue =
+| string
+| null
+| undefined
+| {
+  code?: unknown;
+  html?: unknown;
+  value?: unknown;
+  get_verification_code?: unknown;
+};
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -70,6 +81,23 @@ PLACEMENT_DESCRIPTIONS[placement] || '';
 
 export const getPlacementWarning = (placement: VerificationPlacement): string =>
 PLACEMENT_WARNINGS[placement] || '';
+
+function coerceVerificationCode(value: VerificationCodeRpcValue | VerificationCodeRpcValue[]): string {
+if (typeof value === 'string') {
+return value;
+}
+
+if (Array.isArray(value)) {
+return coerceVerificationCode(value[0]);
+}
+
+if (value && typeof value === 'object') {
+const candidate = value.code ?? value.get_verification_code ?? value.html ?? value.value;
+return typeof candidate === 'string' ? candidate : '';
+}
+
+return '';
+}
 
 // ============================================================================
 // API Functions
@@ -139,7 +167,7 @@ console.error('Error fetching verification code:', error);
 return '';
 }
 
-  return (data as string) || '';
+  return coerceVerificationCode(data as VerificationCodeRpcValue | VerificationCodeRpcValue[]);
 }
 
 /**

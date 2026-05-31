@@ -3,6 +3,7 @@
  * Allows users to mark their comfort level with a question
  */
 
+import { useEffect, useState } from 'react';
 import { CheckCircle, RefreshCw, AlertCircle, Bookmark, BookmarkCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -62,6 +63,23 @@ export function ComfortActions({
   className,
 }: ComfortActionsProps) {
   const SaveIcon = isSavedForLater ? BookmarkCheck : Bookmark;
+  const [showSavedConfirmation, setShowSavedConfirmation] = useState(false);
+
+  useEffect(() => {
+    if (!showSavedConfirmation) return;
+
+    const timer = window.setTimeout(() => {
+      setShowSavedConfirmation(false);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [showSavedConfirmation]);
+
+  const handleSaveClick = () => {
+    const willSave = !isSavedForLater;
+    onSaveToggle();
+    setShowSavedConfirmation(willSave);
+  };
 
   return (
     <div className={cn('space-y-5', className)}>
@@ -107,17 +125,28 @@ export function ComfortActions({
       </div>
 
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
-        onClick={onSaveToggle}
+        onClick={handleSaveClick}
         className={cn(
-          'rounded-full px-4 font-bold text-blue-800 hover:bg-blue-50 hover:text-blue-950',
-          isSavedForLater && 'bg-blue-50 text-blue-700 hover:text-blue-900'
+          'rounded-full border-2 px-4 font-extrabold shadow-sm transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]',
+          isSavedForLater
+            ? 'border-blue-300 bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-blue-200 hover:from-blue-700 hover:to-cyan-700 hover:text-white'
+            : 'border-blue-100 bg-white text-blue-800 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-950 hover:shadow-blue-100'
         )}
       >
         <SaveIcon className="w-4 h-4 mr-2" />
         {isSavedForLater ? 'Saved to review later' : 'Save to review later'}
       </Button>
+      {showSavedConfirmation && (
+        <div
+          role="status"
+          className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800 shadow-sm shadow-emerald-100"
+        >
+          <BookmarkCheck className="h-4 w-4" />
+          Saved for review. Find it in your dashboard under Saved for Later.
+        </div>
+      )}
     </div>
   );
 }

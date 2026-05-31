@@ -132,10 +132,10 @@ export function SecurePDFDownload({
         <>
           <button
             onClick={() => setShowUpgrade(true)}
-            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+            className="premium-pdf-icon-cta p-2 rounded-lg transition-colors"
             title={reason || 'PDF downloads require a premium plan'}
           >
-            <Lock className="w-4 h-4 text-amber-500" />
+            <Lock className="w-4 h-4 text-white" />
           </button>
           <UpgradePrompt
             isOpen={showUpgrade}
@@ -154,12 +154,12 @@ export function SecurePDFDownload({
           <button
             onClick={() => setShowUpgrade(true)}
             className={cn(
-              'inline-flex items-center gap-2 text-amber-600 hover:text-amber-700 font-medium',
+              'premium-pdf-link-cta inline-flex items-center gap-2 font-extrabold',
               className
             )}
           >
             <Lock className="w-4 h-4" />
-            {showLabel && 'Premium PDF'}
+            {showLabel && 'Unlock 1,200+ Now'}
           </button>
           <UpgradePrompt
             isOpen={showUpgrade}
@@ -179,10 +179,10 @@ export function SecurePDFDownload({
           variant="outline"
           size={size}
           onClick={() => setShowUpgrade(true)}
-          className={cn('border-amber-200 hover:border-amber-300', className)}
+          className={cn('premium-pdf-cta border-amber-200 hover:border-amber-300', className)}
         >
-          <Lock className="w-4 h-4 mr-2 text-amber-500" />
-          {showLabel && 'Premium PDF'}
+          <Lock className="w-4 h-4 mr-2 text-white" />
+          {showLabel && 'Unlock 1,200+ Now'}
         </Button>
         <UpgradePrompt
           isOpen={showUpgrade}

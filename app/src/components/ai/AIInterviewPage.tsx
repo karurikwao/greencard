@@ -87,7 +87,6 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
   const { 
     canStartSession, 
     canContinueSession, 
-    recordTurn, 
     usageDisplay,
     isLoading: isLoadingAIUsage 
   } = useAISession();
@@ -175,7 +174,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
     
     // Check if user can start a session using server-tracked usage
     if (!canStartSession) {
-      setError('Daily Robin session limit reached. Upgrade for unlimited access.');
+      setError('Daily Robin chat limit reached. Upgrade for more daily chats.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
     }
@@ -185,7 +184,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
   const startInterview = useCallback(async () => {
     // NEW: Check if user can start session using server-side tracked usage
     if (!canStartSession) {
-      setError('Daily Robin session limit reached. Upgrade for unlimited access.');
+      setError('Daily Robin chat limit reached. Upgrade for more daily chats.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
       return;
@@ -257,7 +256,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
     
     // NEW: Check if user can continue this session
     if (!canContinueSession) {
-      setError('Daily Robin chat limit reached for this session. Upgrade for unlimited access.');
+      setError('Daily Robin chat limit reached. Upgrade for more daily chats.');
       setErrorUpgradeRecommended(true);
       setPhase('error');
       return;
@@ -291,9 +290,6 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
       setCurrentTurn(result.turn);
       setPhase('feedback');
       
-      // NEW: Record turn usage to server
-      await recordTurn();
-      
       // Save session
       saveSession(session, updatedTurns);
       
@@ -322,7 +318,7 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
     } finally {
       setIsSubmitting(false);
     }
-  }, [session, currentQuestion, userAnswer, turns, canContinueSession, recordTurn]);
+  }, [session, currentQuestion, userAnswer, turns, canContinueSession]);
   
   // Continue to next question
   const continueInterview = useCallback(() => {
@@ -503,18 +499,18 @@ export function AIInterviewPage({ mode = 'standard', topicId, onExit }: AIInterv
                   <Badge variant="secondary">{currentPlan.name}</Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-slate-600">Questions per session</span>
+                  <span className="text-slate-600">Daily Robin chats</span>
                   <span className="font-medium">{planAccess.maxTurns}</span>
                 </div>
                 {/* NEW: Show server-tracked AI usage */}
                 {usageDisplay && (
                   <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-200">
-                    <span className="text-slate-600">Daily sessions used</span>
+                    <span className="text-slate-600">Chats used today</span>
                     <span className={cn(
                       "font-medium",
-                      usageDisplay.sessionsRemaining === 0 ? "text-red-600" : "text-slate-700"
+                      usageDisplay.turnsRemaining === 0 ? "text-red-600" : "text-slate-700"
                     )}>
-                      {usageDisplay.sessionsUsed} / {usageDisplay.sessionsUsed + usageDisplay.sessionsRemaining}
+                      {usageDisplay.turnsUsed} / {usageDisplay.turnsTotal}
                     </span>
                   </div>
                 )}

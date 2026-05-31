@@ -202,9 +202,9 @@ CREATE POLICY "Service role can manage plan config" ON plan_config FOR ALL TO se
 INSERT INTO plan_config (plan_type, name, description, max_turns_per_session, max_sessions_per_day, can_use_ai, can_choose_provider, can_choose_model)
 VALUES 
   ('trial', 'Free Trial', '7-day free trial with limited AI access', 5, 1, true, false, false),
-  ('monthly', 'Premium Monthly', 'Full access with AI interview practice', 20, 5, true, true, true),
-  ('lifetime', 'Lifetime Access', 'Full access forever with highest limits', 50, 10, true, true, true),
-  ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days', 20, 5, true, true, true)
+  ('monthly', 'Premium Monthly', 'Full access with 20 daily Robin chats', 20, 1, true, true, true),
+  ('lifetime', 'Lifetime Access', 'Full access forever with 30 daily Robin chats', 30, 1, true, true, true),
+  ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days with 20 daily Robin chats', 20, 1, true, true, true)
 ON CONFLICT (plan_type) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
   max_turns_per_session = EXCLUDED.max_turns_per_session, max_sessions_per_day = EXCLUDED.max_sessions_per_day,
@@ -418,12 +418,12 @@ DECLARE v_plan_type TEXT; v_max_sessions INTEGER; v_max_turns INTEGER; v_usage_r
 BEGIN
   SELECT plan_type, has_access INTO v_plan_type, v_has_access FROM get_effective_subscription(p_user_id);
   IF v_plan_type IS NULL THEN v_plan_type := 'trial'; v_has_access := true; END IF;
-  SELECT CASE v_plan_type WHEN 'trial' THEN 1 WHEN 'interviewPass' THEN 5 WHEN 'monthly' THEN 5 WHEN 'lifetime' THEN 10 ELSE 1 END,
-         CASE v_plan_type WHEN 'trial' THEN 5 WHEN 'interviewPass' THEN 20 WHEN 'monthly' THEN 20 WHEN 'lifetime' THEN 50 ELSE 5 END
+  SELECT 1,
+         CASE v_plan_type WHEN 'trial' THEN 5 WHEN 'interviewPass' THEN 20 WHEN 'monthly' THEN 20 WHEN 'lifetime' THEN 30 ELSE 5 END
   INTO v_max_sessions, v_max_turns;
   SELECT * INTO v_usage_record FROM get_or_create_daily_usage(p_user_id);
   IF NOT v_has_access THEN RETURN QUERY SELECT false, 'Your subscription has expired. Please upgrade to continue.'::TEXT, v_plan_type, v_max_sessions, v_max_turns, v_usage_record.sessions_count, v_usage_record.total_turns, 0, 0; RETURN; END IF;
-  IF v_usage_record.sessions_count >= v_max_sessions THEN RETURN QUERY SELECT false, format('Daily session limit reached (%s per day)', v_max_sessions)::TEXT, v_plan_type, v_max_sessions, v_max_turns, v_usage_record.sessions_count, v_usage_record.total_turns, 0, GREATEST(0, v_max_turns - v_usage_record.total_turns); RETURN; END IF;
+  IF v_usage_record.total_turns >= v_max_turns THEN RETURN QUERY SELECT false, format('Daily Robin chat limit reached (%s per day)', v_max_turns)::TEXT, v_plan_type, v_max_sessions, v_max_turns, v_usage_record.sessions_count, v_usage_record.total_turns, GREATEST(0, v_max_sessions - v_usage_record.sessions_count), 0; RETURN; END IF;
   RETURN QUERY SELECT true, NULL::TEXT, v_plan_type, v_max_sessions, v_max_turns, v_usage_record.sessions_count, v_usage_record.total_turns, GREATEST(0, v_max_sessions - v_usage_record.sessions_count), GREATEST(0, v_max_turns - v_usage_record.total_turns);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -1,6 +1,7 @@
 import hashlib
 import html as html_tools
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -57,6 +58,33 @@ def _idempotency_key(*parts: str) -> str:
     source = '|'.join(part or '' for part in parts)
     digest = hashlib.sha256(source.encode('utf-8')).hexdigest()
     return f'interviewready-{digest}'
+
+
+def _rich_email_fragment(value: str) -> str:
+    text = str(value or '')
+    if not re.search(r'</?[a-z][\s\S]*>', text, flags=re.IGNORECASE):
+        escaped = html_tools.escape(text).replace('\n', '<br>')
+        return re.sub(
+            r'(https?://[^\s<]+|mailto:[^\s<]+|tel:[^\s<]+)',
+            lambda match: f'<a href="{html_tools.escape(match.group(0), quote=True)}">{html_tools.escape(match.group(0))}</a>',
+            escaped,
+        )
+
+    cleaned = re.sub(
+        r'<\s*(script|style)[^>]*>.*?<\s*/\s*\1\s*>',
+        '',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    cleaned = re.sub(r'\son\w+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'javascript:', '', cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def _plain_text_from_rich(value: str) -> str:
+    text = re.sub(r'<\s*br\s*/?>', '\n', str(value or ''), flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    return html_tools.unescape(text).strip()
 
 
 def send_email(
@@ -155,7 +183,7 @@ def send_purchase_confirmation_email(
     <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
       <h1 style="font-size: 24px; margin-bottom: 12px;">Your premium access is active</h1>
       <p>Thank you for upgrading to <strong>{html_tools.escape(plan_label)}</strong>.</p>
-      <p>Your plan: {html_tools.escape(plan_summary)}. Premium question sets, PDFs, AI practice, and partner collaboration are now unlocked on your account.</p>
+      <p>Your plan: {html_tools.escape(plan_summary)}. Premium question sets, PDFs, Robin practice, and partner collaboration are now unlocked on your account.</p>
       <p>
         <a href="{dashboard_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 12px 18px; border-radius: 6px; text-decoration: none;">
           Continue practicing
@@ -311,21 +339,22 @@ def send_support_reply_email(
     reply: str,
 ) -> Dict[str, object]:
     subject_text = str(ticket.get('subject') or 'Support ticket')
-    dashboard_url = f'{_frontend_url()}/dashboard'
+    dashboard_url = f'{_frontend_url()}/messages'
+    rich_reply = _rich_email_fragment(reply)
     html_body = f"""
     <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
       <h1 style="font-size: 22px; margin-bottom: 12px;">Support replied to your ticket</h1>
       <p><strong>{html_tools.escape(subject_text)}</strong></p>
       <div style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 16px 0;">
-        {html_tools.escape(reply).replace(chr(10), '<br>')}
+        {rich_reply}
       </div>
-      <p><a href="{dashboard_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Open your dashboard</a></p>
+      <p><a href="{dashboard_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Open messages</a></p>
     </div>
     """
     text_body = (
         f'Support replied to your ticket: {subject_text}\n\n'
-        f'{reply}\n\n'
-        f'Open your dashboard: {dashboard_url}\n'
+        f'{_plain_text_from_rich(reply)}\n\n'
+        f'Open messages: {dashboard_url}\n'
     )
     return send_email(
         to_email,
@@ -334,4 +363,36 @@ def send_support_reply_email(
         text_body,
         tags=[{'name': 'category', 'value': 'support_reply'}],
         idempotency_key=_idempotency_key('support_reply', str(ticket.get('id') or ''), reply[:120]),
+    )
+
+
+def send_dashboard_message_email(
+    to_email: str,
+    title: str,
+    message: str,
+    action_url: Optional[str] = None,
+    message_id: Optional[str] = None,
+) -> Dict[str, object]:
+    message_url = action_url or f'{_frontend_url()}/messages'
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
+      <h1 style="font-size: 22px; margin-bottom: 12px;">{html_tools.escape(title or 'New dashboard message')}</h1>
+      <div style="border-left: 3px solid #0ea5e9; padding-left: 12px; margin: 16px 0;">
+        {_rich_email_fragment(message)}
+      </div>
+      <p><a href="{html_tools.escape(message_url, quote=True)}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none;">Open your messages</a></p>
+    </div>
+    """
+    text_body = (
+        f'{title or "New dashboard message"}\n\n'
+        f'{_plain_text_from_rich(message)}\n\n'
+        f'Open messages: {message_url}\n'
+    )
+    return send_email(
+        to_email,
+        title or 'New InterviewReady dashboard message',
+        html_body,
+        text_body,
+        tags=[{'name': 'category', 'value': 'dashboard_message'}],
+        idempotency_key=_idempotency_key('dashboard_message', to_email, message_id or title or '', message[:120]),
     )

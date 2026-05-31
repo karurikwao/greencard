@@ -125,6 +125,75 @@ def run_incremental_migrations(cur):
           ADD CONSTRAINT support_tickets_category_check
           CHECK (category IN ('billing', 'refund', 'technical', 'account', 'feature_request', 'other'));
 
+        INSERT INTO plan_config (plan_type, name, description, max_turns_per_session, max_sessions_per_day, can_use_ai, can_choose_provider, can_choose_model)
+        VALUES
+            ('trial', 'Free Trial', '7-day free trial with limited AI access', 5, 1, true, false, false),
+            ('monthly', 'Premium Monthly', 'Full access with 20 daily Robin chats', 20, 1, true, true, true),
+            ('lifetime', 'Lifetime Access', 'Full access forever with 30 daily Robin chats', 30, 1, true, true, true),
+            ('interviewPass', '90-Day Interview Pass', 'Full access for 90 days with 20 daily Robin chats', 20, 1, true, true, true)
+        ON CONFLICT (plan_type) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            max_turns_per_session = EXCLUDED.max_turns_per_session,
+            max_sessions_per_day = EXCLUDED.max_sessions_per_day,
+            can_use_ai = EXCLUDED.can_use_ai,
+            can_choose_provider = EXCLUDED.can_choose_provider,
+            can_choose_model = EXCLUDED.can_choose_model,
+            updated_at = now();
+
+        CREATE OR REPLACE FUNCTION check_ai_usage_limits(p_user_id UUID)
+        RETURNS TABLE (
+            allowed BOOLEAN, reason TEXT, plan_type TEXT,
+            max_sessions_per_day INTEGER, max_turns_per_session INTEGER,
+            sessions_used_today INTEGER, turns_used_today INTEGER,
+            sessions_remaining INTEGER, turns_remaining INTEGER
+        ) AS $$
+        DECLARE
+            v_plan_type TEXT;
+            v_max_sessions INTEGER;
+            v_max_turns INTEGER;
+            v_usage_record RECORD;
+            v_has_access BOOLEAN;
+        BEGIN
+            SELECT plan_type, has_access INTO v_plan_type, v_has_access
+            FROM get_effective_subscription(p_user_id);
+
+            IF v_plan_type IS NULL THEN
+                v_plan_type := 'trial';
+                v_has_access := true;
+            END IF;
+
+            SELECT COALESCE(max_sessions_per_day, 1), COALESCE(max_turns_per_session, 5)
+            INTO v_max_sessions, v_max_turns
+            FROM plan_config WHERE plan_type = v_plan_type;
+
+            SELECT * INTO v_usage_record FROM get_or_create_daily_usage(p_user_id);
+
+            IF NOT v_has_access THEN
+                RETURN QUERY SELECT
+                    false, 'Your subscription has expired. Please upgrade to continue.'::TEXT,
+                    v_plan_type, v_max_sessions, v_max_turns,
+                    v_usage_record.sessions_count, v_usage_record.total_turns, 0, 0;
+                RETURN;
+            END IF;
+
+            IF v_usage_record.total_turns >= v_max_turns THEN
+                RETURN QUERY SELECT
+                    false, format('Daily Robin chat limit reached (%s per day)', v_max_turns)::TEXT,
+                    v_plan_type, v_max_sessions, v_max_turns,
+                    v_usage_record.sessions_count, v_usage_record.total_turns,
+                    GREATEST(0, v_max_sessions - v_usage_record.sessions_count), 0;
+                RETURN;
+            END IF;
+
+            RETURN QUERY SELECT
+                true, NULL::TEXT, v_plan_type, v_max_sessions, v_max_turns,
+                v_usage_record.sessions_count, v_usage_record.total_turns,
+                GREATEST(0, v_max_sessions - v_usage_record.sessions_count),
+                GREATEST(0, v_max_turns - v_usage_record.total_turns);
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER;
+
         CREATE OR REPLACE FUNCTION create_refund_request(
             p_user_id UUID, p_subscription_id TEXT DEFAULT NULL,
             p_stripe_payment_intent_id TEXT DEFAULT NULL,

@@ -68,9 +68,9 @@ export type FeatureKey = keyof PlanFeatures;
  * AI usage limits for a plan
  */
 export interface AILimits {
-  /** Maximum turns (QA exchanges) per session */
+  /** Maximum Robin chats per day */
   maxTurnsPerSession: number;
-  /** Maximum sessions per day */
+  /** Legacy session field kept for compatibility; daily chat limit is authoritative */
   maxSessionsPerDay: number;
 }
 
@@ -264,9 +264,9 @@ export interface UsageCheckResult {
   allowed: boolean;
   /** Reason if not allowed */
   reason?: string;
-  /** Remaining sessions today */
+  /** Remaining sessions today (legacy compatibility) */
   remainingSessions: number;
-  /** Remaining turns in current session */
+  /** Remaining Robin chats today */
   remainingTurns?: number;
 }
 
