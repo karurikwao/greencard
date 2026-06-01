@@ -191,9 +191,10 @@ interface PricingCardProps {
   isCurrentPlan: boolean;
   onSelect: () => void;
   isProcessing: boolean;
+  isDisabled?: boolean;
 }
 
-function PricingCard({ plan, isCurrentPlan, onSelect, isProcessing }: PricingCardProps) {
+function PricingCard({ plan, isCurrentPlan, onSelect, isProcessing, isDisabled = false }: PricingCardProps) {
   const Icon = getPlanIcon(plan.id);
   const isRecommended = plan.id === 'lifetime';
   const isPopular = plan.id === 'monthly';
@@ -323,7 +324,7 @@ function PricingCard({ plan, isCurrentPlan, onSelect, isProcessing }: PricingCar
             ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
             : 'bg-slate-800 hover:bg-slate-900'
         )}
-        disabled={isCurrentPlan || isProcessing}
+        disabled={isCurrentPlan || isProcessing || isDisabled}
         onClick={onSelect}
       >
         {isProcessing ? (
@@ -375,7 +376,7 @@ export function PricingPage({
   }, []);
 
   const { isAuthenticated } = useOptionalAuth();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingPlan, setProcessingPlan] = useState<PlanType | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingCheckoutPlan, setPendingCheckoutPlan] = useState<PlanType | null>(null);
@@ -386,7 +387,7 @@ export function PricingPage({
 
   const startCheckout = async (plan: PlanType) => {
     setCheckoutError(null);
-    setIsProcessing(true);
+    setProcessingPlan(plan);
 
     try {
       // Dynamically import to avoid loading Stripe code unless needed
@@ -403,12 +404,12 @@ export function PricingPage({
         window.location.href = result.checkoutUrl;
       } else {
         setCheckoutError(result.error || 'Unable to start checkout. Please try again.');
-        setIsProcessing(false);
+        setProcessingPlan(null);
       }
     } catch (err) {
       console.error('Checkout error:', err);
       setCheckoutError('An unexpected error occurred. Please try again.');
-      setIsProcessing(false);
+      setProcessingPlan(null);
     }
   };
 
@@ -550,7 +551,8 @@ export function PricingPage({
                 plan={plan}
                 isCurrentPlan={currentPlan === plan.id}
                 onSelect={() => handleSelectPlan(plan.id)}
-                isProcessing={isProcessing || externalIsProcessing}
+                isProcessing={processingPlan === plan.id}
+                isDisabled={Boolean(processingPlan) || externalIsProcessing}
               />
             ))}
           </div>

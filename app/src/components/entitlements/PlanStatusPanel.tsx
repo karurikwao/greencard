@@ -202,7 +202,7 @@ export function PlanStatusPanel({
                   icon={<Zap className="w-4 h-4" />}
                   name="Practice with Robin"
                   status={hasPremiumAccess ? 'full' : 'limited'}
-                  description={hasPremiumAccess ? 'Expanded access' : '5 chats, 1 session/day'}
+                  description={hasPremiumAccess ? 'Expanded daily chats' : '5 daily chats'}
                 />
                 <FeatureRow
                   icon={<Download className="w-4 h-4" />}

@@ -22,7 +22,7 @@ const EXISTING_SITUATION_PAGES = [
 import { generateSitemapXML } from './utils';
 import type { SitemapEntry } from './types';
 
-const BASE_URL = 'https://greencardprep.com';
+const BASE_URL = 'https://www.SpouseInterview.com';
 
 /**
  * Generate sitemap entries for question pages

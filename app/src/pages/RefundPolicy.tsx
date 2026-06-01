@@ -179,8 +179,8 @@ export function RefundPolicy({ onBack }: RefundPolicyProps) {
             <p className="text-slate-600 text-center">
               If you have questions about your refund request or need assistance, 
               please contact us at{' '}
-              <a href="mailto:support@greencardprep.com" className="text-blue-600 hover:underline">
-                support@greencardprep.com
+              <a href="mailto:support@spouseinterview.com" className="text-blue-600 hover:underline">
+                support@spouseinterview.com
               </a>
             </p>
           </CardContent>

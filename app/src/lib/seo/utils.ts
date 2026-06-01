@@ -57,7 +57,7 @@ export function generateQuestionDescription(question: SEOQuestion): string {
  */
 export function generateQuestionMetaTags(
   question: SEOQuestion,
-  baseUrl: string = 'https://greencardprep.com'
+  baseUrl: string = 'https://www.SpouseInterview.com'
 ): SEOMetaTags {
   const title = generateQuestionTitle(question);
   const description = generateQuestionDescription(question);
@@ -85,7 +85,7 @@ export function generateQuestionMetaTags(
  */
 export function generateCategoryMetaTags(
   category: CategoryHub,
-  baseUrl: string = 'https://greencardprep.com'
+  baseUrl: string = 'https://www.SpouseInterview.com'
 ): SEOMetaTags {
   return {
     title: category.seoTitle,
@@ -148,7 +148,7 @@ export function generateFAQSchema(question: SEOQuestion): FAQSchema {
  */
 export function generateBreadcrumbSchema(
   items: { name: string; url: string }[],
-  baseUrl: string = 'https://greencardprep.com'
+  baseUrl: string = 'https://www.SpouseInterview.com'
 ): BreadcrumbSchema {
   return {
     '@context': 'https://schema.org',
@@ -167,7 +167,7 @@ export function generateBreadcrumbSchema(
  */
 export function generateQuestionSitemapEntries(
   questions: SEOQuestion[],
-  baseUrl: string = 'https://greencardprep.com'
+  baseUrl: string = 'https://www.SpouseInterview.com'
 ): SitemapEntry[] {
   const now = new Date().toISOString();
   
@@ -186,7 +186,7 @@ export function generateQuestionSitemapEntries(
  */
 export function generateCategorySitemapEntries(
   categories: CategoryHub[],
-  baseUrl: string = 'https://greencardprep.com'
+  baseUrl: string = 'https://www.SpouseInterview.com'
 ): SitemapEntry[] {
   const now = new Date().toISOString();
   

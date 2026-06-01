@@ -60,8 +60,9 @@ error: 'Failed to load subscription data',
 
   const hasSubscription = !!sub;
   const planType: PlanType = hasSubscription ? (sub?.plan_type as PlanType) : 'trial';
-  const effectiveStatus = (hasSubscription ? sub?.effective_status : 'inactive') as string;
-  const hasAccess = hasSubscription ? (sub?.has_access as boolean) : false;
+  const effectiveStatus = (hasSubscription ? sub?.effective_status : 'trialing') as string;
+  const hasAccess = hasSubscription ? (sub?.has_access as boolean) : true;
+  const daysRemaining = hasSubscription ? ((sub?.days_remaining as number | null) ?? null) : 7;
 
   const entitlements: UserEntitlements = {
     userId: user.id,
@@ -69,12 +70,12 @@ error: 'Failed to load subscription data',
 
     subscription: {
       planType,
-      status: (sub?.status as SubscriptionStatus) || 'inactive',
-      effectiveStatus: (effectiveStatus || 'inactive') as SubscriptionStatus,
+      status: (sub?.status as SubscriptionStatus) || 'trialing',
+      effectiveStatus: (effectiveStatus || 'trialing') as SubscriptionStatus,
       hasAccess: hasAccess ?? false,
-      isActive: hasSubscription && ['trialing', 'active', 'grace_period'].includes(effectiveStatus),
-      isExpired: effectiveStatus === 'expired' || !hasSubscription,
-      isTrial: planType === 'trial' && hasSubscription,
+      isActive: ['trialing', 'active', 'grace_period'].includes(effectiveStatus),
+      isExpired: effectiveStatus === 'expired',
+      isTrial: planType === 'trial',
       isPaid: hasSubscription && ['monthly', 'lifetime', 'interviewPass'].includes(planType),
       isLifetime: planType === 'lifetime',
 
@@ -84,9 +85,9 @@ error: 'Failed to load subscription data',
       currentPeriodEndsAt: sub?.current_period_ends_at as string | null,
       accessEndsAt: sub?.access_ends_at as string | null,
 
-      daysRemaining: (sub?.days_remaining as number | null) ?? null,
-      trialDaysLeft: planType === 'trial' && hasSubscription ? ((sub?.days_remaining as number) || 7) : null,
-      passDaysLeft: planType === 'interviewPass' ? ((sub?.days_remaining as number) || 0) : null,
+      daysRemaining,
+      trialDaysLeft: planType === 'trial' ? (daysRemaining ?? 7) : null,
+      passDaysLeft: planType === 'interviewPass' ? (daysRemaining ?? 0) : null,
     },
 
     aiUsage: hasSubscription && ai ? {

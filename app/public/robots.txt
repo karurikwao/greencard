@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 
 # Sitemap
-Sitemap: https://greencardprep.com/sitemap.xml
+Sitemap: https://www.SpouseInterview.com/sitemap.xml
 
 # Disallow admin routes
 Disallow: /admin/

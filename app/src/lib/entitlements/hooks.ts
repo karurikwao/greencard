@@ -44,6 +44,28 @@ export function useEntitlements() {
     fetchEntitlements();
   }, [fetchEntitlements]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchEntitlements();
+      }
+    };
+
+    const refreshOnFocus = () => {
+      void fetchEntitlements();
+    };
+
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [fetchEntitlements]);
+
   const refresh = useCallback(() => {
     return fetchEntitlements();
   }, [fetchEntitlements]);

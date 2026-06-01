@@ -195,6 +195,7 @@ function StatusLoadState({
 export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
   const { isAdmin, isSuperAdmin, user } = useOptionalAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [supportUserFilter, setSupportUserFilter] = useState<string | null>(null);
   // Notification state - available for future use
   // const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -300,7 +301,12 @@ export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
           </TabsContent>
 
           <TabsContent value="users">
-            <UsersTab />
+            <UsersTab
+              onOpenSupport={(targetUser) => {
+                setSupportUserFilter(targetUser?.email || null);
+                setActiveTab('support');
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="billing">
@@ -320,7 +326,10 @@ export function SuperAdminPortal({ onClose }: SuperAdminPortalProps) {
           </TabsContent>
 
           <TabsContent value="support">
-            <SupportTicketsTab />
+            <SupportTicketsTab
+              userFilter={supportUserFilter}
+              onClearUserFilter={() => setSupportUserFilter(null)}
+            />
           </TabsContent>
 
           <TabsContent value="answers">
@@ -419,7 +428,7 @@ function OverviewTab() {
 }
 
 // Users Tab
-function UsersTab() {
+function UsersTab({ onOpenSupport }: { onOpenSupport: (user?: AdminUserSnapshot) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [usersResponse, setUsersResponse] = useState<AdminUsersResponse | null>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUserSnapshot | null>(null);
@@ -504,7 +513,14 @@ function UsersTab() {
         <StatCard title="Total Users" value={(usersResponse?.totals.totalUsers ?? 0).toLocaleString()} change="" trend="up" icon={Users} />
         <StatCard title="Paid Users" value={(usersResponse?.totals.paidUsers ?? 0).toLocaleString()} change="" trend="up" icon={CreditCard} />
         <StatCard title="Trial Users" value={(usersResponse?.totals.trialUsers ?? 0).toLocaleString()} change="" trend="up" icon={Activity} />
-        <StatCard title="Need Help" value={(usersResponse?.totals.usersWithOpenTickets ?? 0).toLocaleString()} change="" trend="up" icon={MessageSquare} />
+        <StatCard
+          title="Need Help"
+          value={(usersResponse?.totals.usersWithOpenTickets ?? 0).toLocaleString()}
+          change=""
+          trend="up"
+          icon={MessageSquare}
+          onClick={() => onOpenSupport()}
+        />
       </div>
 
       {error && (
@@ -584,9 +600,20 @@ function UsersTab() {
                           <div className="flex flex-wrap gap-2">
                             <Badge variant="outline">{user.unique_pdfs_downloaded} PDFs</Badge>
                             <Badge variant="outline">{user.connected_partners} partner</Badge>
-                            <Badge variant="outline" className={user.open_tickets ? 'bg-amber-50 text-amber-700 border-amber-200' : ''}>
+                            <button
+                              type="button"
+                              disabled={!user.open_tickets}
+                              onClick={() => onOpenSupport(user)}
+                              className={cn(
+                                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors',
+                                user.open_tickets
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100'
+                                  : 'cursor-default border-slate-200 bg-white text-slate-600'
+                              )}
+                              title={user.open_tickets ? 'Open this user support tickets' : 'No open tickets'}
+                            >
                               {user.open_tickets} open tickets
-                            </Badge>
+                            </button>
                           </div>
                         </td>
                         <td className="p-3 text-slate-600">{formatDate(user.joined_at)}</td>
@@ -636,7 +663,20 @@ function UsersTab() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <div className="rounded-lg border border-slate-200 p-3">
-                  <div className="font-medium text-slate-900">Support</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium text-slate-900">Support</div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedUser(null);
+                        onOpenSupport(selectedUser);
+                      }}
+                      disabled={!selectedUser.total_tickets}
+                    >
+                      Open tickets
+                    </Button>
+                  </div>
                   <p className="mt-1 text-slate-600">
                     {selectedUser.open_tickets} open of {selectedUser.total_tickets} total tickets.
                     Last ticket: {formatDate(selectedUser.last_ticket_at)}.
@@ -1575,7 +1615,7 @@ function AIConfigTab() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Memory Bank and Indexing</CardTitle>
-              <CardDescription>Live status for captured answers and expansion pages.</CardDescription>
+              <CardDescription>Live status for Robin memory, captured answers, and expansion pages.</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={memory.refresh}>
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -1587,7 +1627,14 @@ function AIConfigTab() {
           <StatusLoadState isLoading={memory.isLoading} error={memory.error} onRefresh={memory.refresh} />
           {memory.status && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Robin chat memory</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">{memory.status.dashboardAgentMemory?.total_entries || 0}</div>
+                  <div className="text-xs text-indigo-700">
+                    {memory.status.dashboardAgentMemory?.users_with_agent_memory || 0} users, {memory.status.dashboardAgentMemory?.captured_today || 0} today
+                  </div>
+                </div>
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Captured answers</div>
                   <div className="mt-1 text-2xl font-semibold text-slate-900">{memory.status.answerCandidates.total_candidates || 0}</div>
@@ -1605,8 +1652,18 @@ function AIConfigTab() {
                 </div>
               </div>
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                User answers are captured silently, sanitized, and queued for manual review. Original answers stay private unless an admin opens a candidate detail.
+                Robin chats are indexed in the private dashboard memory table for that user's future Robin context. Captured practice answers are separate: they are sanitized and queued for manual public-example review, and original answers stay private unless an admin opens a candidate detail.
               </div>
+              {memory.status.notes.length > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                  <div className="mb-2 font-semibold text-slate-900">Indexing notes</div>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {memory.status.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
         </CardContent>
@@ -1963,7 +2020,13 @@ function BroadcastsTab() {
   );
 }
 
-function LiveSupportTicketsTab() {
+function LiveSupportTicketsTab({
+  userFilter,
+  onClearUserFilter,
+}: {
+  userFilter?: string | null;
+  onClearUserFilter?: () => void;
+}) {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1971,6 +2034,7 @@ function LiveSupportTicketsTab() {
   const [replyText, setReplyText] = useState('');
   const [isReplying, setIsReplying] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
+  const [autoOpenedFilter, setAutoOpenedFilter] = useState<string | null>(null);
 
   const loadTickets = async () => {
     setIsLoading(true);
@@ -2007,6 +2071,19 @@ function LiveSupportTicketsTab() {
     setSelectedTicket(ticket);
     setReplyText(ticket.aiSuggestedReply || ticket.adminReply || '');
   };
+
+  const visibleTickets = userFilter
+    ? tickets.filter(ticket => ticket.userEmail.toLowerCase() === userFilter.toLowerCase())
+    : tickets;
+
+  useEffect(() => {
+    if (!userFilter || isLoading || autoOpenedFilter === userFilter) return;
+    const firstMatchingTicket = visibleTickets[0];
+    if (firstMatchingTicket) {
+      openReplyDialog(firstMatchingTicket);
+      setAutoOpenedFilter(userFilter);
+    }
+  }, [autoOpenedFilter, isLoading, userFilter, visibleTickets]);
 
   const handleDraft = async () => {
     if (!selectedTicket) return;
@@ -2058,9 +2135,9 @@ function LiveSupportTicketsTab() {
     }
   };
 
-  const openCount = tickets.filter(t => t.status === 'open').length;
-  const repliedCount = tickets.filter(t => t.status === 'replied').length;
-  const refundSignalCount = tickets.filter(t => t.refundSignal).length;
+  const openCount = visibleTickets.filter(t => t.status === 'open').length;
+  const repliedCount = visibleTickets.filter(t => t.status === 'replied').length;
+  const refundSignalCount = visibleTickets.filter(t => t.refundSignal).length;
 
   return (
     <div className="space-y-6">
@@ -2081,12 +2158,23 @@ function LiveSupportTicketsTab() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Support Tickets</CardTitle>
-              <CardDescription>Live support requests, AI summaries, refund signals, and retention offers.</CardDescription>
+              <CardDescription>
+                {userFilter
+                  ? `Filtered to support messages from ${userFilter}.`
+                  : 'Live support requests, AI summaries, refund signals, and retention offers.'}
+              </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={loadTickets}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {userFilter && (
+                <Button variant="ghost" size="sm" onClick={onClearUserFilter}>
+                  Clear user filter
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={loadTickets}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -2096,15 +2184,15 @@ function LiveSupportTicketsTab() {
                 <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
                 Loading tickets...
               </div>
-            ) : tickets.length === 0 ? (
+            ) : visibleTickets.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                 <p className="font-medium">No support tickets</p>
-                <p className="text-sm">All caught up!</p>
+                <p className="text-sm">{userFilter ? 'No tickets found for this user.' : 'All caught up!'}</p>
               </div>
             ) : (
               <div className="divide-y">
-                {tickets.map((ticket) => (
+                {visibleTickets.map((ticket) => (
                   <div key={ticket.id} className="p-4 flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -2238,8 +2326,14 @@ function LiveSupportTicketsTab() {
 }
 
 // Support Tickets Tab
-function SupportTicketsTab() {
-  return <LiveSupportTicketsTab />;
+function SupportTicketsTab({
+  userFilter,
+  onClearUserFilter,
+}: {
+  userFilter?: string | null;
+  onClearUserFilter?: () => void;
+}) {
+  return <LiveSupportTicketsTab userFilter={userFilter} onClearUserFilter={onClearUserFilter} />;
 }
 
 function LiveAnswerExamplesTab() {
@@ -2475,15 +2569,28 @@ function AnswerExamplesTab() {
 }
 
 // Helper Components
-function StatCard({ title, value, change, trend, icon: Icon }: {
+function StatCard({ title, value, change, trend, icon: Icon, onClick }: {
   title: string;
   value: string;
   change: string;
   trend: 'up' | 'down';
   icon: typeof Users;
+  onClick?: () => void;
 }) {
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      className={cn(onClick && 'cursor-pointer transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg')}
+    >
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
           <div className="p-2 bg-slate-100 rounded-lg">

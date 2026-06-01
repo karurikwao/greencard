@@ -238,8 +238,8 @@ export function TermsOfService({ onBack }: TermsOfServiceProps) {
           <CardContent className="p-6">
             <p className="text-slate-600 text-center">
               If you have any questions about these Terms of Service, please contact us at{' '}
-              <a href="mailto:support@greencardprep.com" className="text-blue-600 hover:underline">
-                support@greencardprep.com
+              <a href="mailto:support@spouseinterview.com" className="text-blue-600 hover:underline">
+                support@spouseinterview.com
               </a>
             </p>
           </CardContent>

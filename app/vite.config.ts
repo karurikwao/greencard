@@ -31,7 +31,7 @@ export default defineConfig({
         // Generate sitemap with cluster pages from clusters.ts
         // This ensures all SEO cluster pages are automatically included
         try {
-          const baseUrl = 'https://greencardprep.com';
+          const baseUrl = 'https://www.SpouseInterview.com';
           const now = new Date().toISOString();
           
           // Read SEO configuration for sitemap frequency
