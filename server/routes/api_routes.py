@@ -220,7 +220,7 @@ def call_rpc(func_name):
             'p_user_agent_hash': lambda: data.get('userAgentHash'),
         },
         'get_user_download_summary': {'p_user_id': lambda: user['id']},
-        'mark_notification_read': {'p_notification_id': lambda: data.get('notificationId')},
+        'mark_notification_read': {'p_notification_id': lambda: data.get('p_notification_id') or data.get('notificationId')},
         'get_unread_notification_count': {},
         'get_user_tickets_with_replies': {'p_user_id': lambda: user['id']},
         'create_support_ticket': {
@@ -1023,7 +1023,7 @@ def admin_welcome_messages_endpoint():
         'signupEnabled': True,
         'upgradeEnabled': True,
         'sendEmail': True,
-        'signupTitle': 'Welcome to InterviewReady',
+        'signupTitle': 'Welcome to Spouse Interview',
         'signupMessage': 'Your free account is ready. Start with your dashboard, build your timeline, and save questions for later review.',
         'upgradeTitle': 'Premium access unlocked',
         'upgradeMessage': 'Thank you for upgrading. Your premium downloads, partner sync, and Robin practice access are now available in your dashboard.',
@@ -1321,7 +1321,7 @@ def _publish_broadcast_row(row):
             if row.get('send_email', True):
                 send_dashboard_message_email(
                     recipient['email'],
-                    row.get('title') or 'New InterviewReady dashboard message',
+                    row.get('title') or 'New Spouse Interview dashboard message',
                     row.get('message') or '',
                     None,
                     str(row.get('id') or ''),

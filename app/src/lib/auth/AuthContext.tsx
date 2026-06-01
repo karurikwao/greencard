@@ -40,6 +40,7 @@ isAdmin: boolean;
 isSuperAdmin: boolean;
 signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
 signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null; data: { user: AuthUser | null } }>;
+signInWithGoogle: (credential: string, metadata?: Record<string, unknown>) => Promise<{ error: Error | null; data: { user: AuthUser | null } }>;
 signOut: () => Promise<void>;
 resetPassword: (email: string) => Promise<{ error: Error | null }>;
 updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
@@ -189,6 +190,15 @@ await loadSession();
 return { error: null, data: { user: data?.user ?? null } };
 };
 
+const signInWithGoogle = async (credential: string, metadata?: Record<string, unknown>) => {
+const { data, error } = await apiClient.auth.signInWithGoogle(credential, metadata);
+if (error) {
+return { error: new Error(error.message), data: { user: null } };
+}
+await loadSession();
+return { error: null, data: { user: data?.user ?? null } };
+};
+
 // Sign out
 const signOut = async () => {
 await apiClient.auth.signOut();
@@ -266,6 +276,7 @@ isAdmin,
 isSuperAdmin,
 signIn,
 signUp,
+signInWithGoogle,
 signOut,
 resetPassword,
 updatePassword,
@@ -302,6 +313,7 @@ isAdmin: false,
 isSuperAdmin: false,
 signIn: async () => ({ error: new Error('Auth not available') }),
 signUp: async () => ({ error: new Error('Auth not available'), data: { user: null } }),
+signInWithGoogle: async () => ({ error: new Error('Auth not available'), data: { user: null } }),
 signOut: async () => {},
 resetPassword: async () => ({ error: new Error('Auth not available') }),
 updatePassword: async () => ({ error: new Error('Auth not available') }),

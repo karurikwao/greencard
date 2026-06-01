@@ -151,6 +151,19 @@ export const apiClient = {
       return result;
     },
 
+    async signInWithGoogle(credential: string, metadata?: Record<string, unknown>) {
+      const result = await request<AuthSessionPayload>('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ credential, metadata }),
+      });
+      const session = normalizeAuthSession(result.data);
+      if (session) {
+        setTokens(session.accessToken, session.refreshToken);
+        return { data: session, error: null };
+      }
+      return result;
+    },
+
     async signOut() {
       const result = await request('/api/auth/signout', { method: 'POST' });
       clearTokens();

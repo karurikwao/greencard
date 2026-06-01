@@ -3,7 +3,7 @@
  * Handles login, signup, and password reset
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Tag, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useOptionalAuth } from '@/lib/auth/AuthContext';
-type Provider = 'google';
 import { 
   getStoredReferralCode, 
   storeReferralCode, 
@@ -29,20 +28,56 @@ interface AuthModalProps {
   onAuthenticated?: () => void;
 }
 
-// Google icon component
-function GoogleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-    </svg>
-  );
+interface GoogleCredentialResponse {
+  credential?: string;
+  select_by?: string;
+}
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+            ux_mode?: 'popup' | 'redirect';
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_SCRIPT_ID = 'google-identity-services';
+
+function loadGoogleIdentityScript(): Promise<void> {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  const existing = document.getElementById(GOOGLE_SCRIPT_ID) as HTMLScriptElement | null;
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google Identity Services could not load.')), { once: true });
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.id = GOOGLE_SCRIPT_ID;
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Google Identity Services could not load.'));
+    document.head.appendChild(script);
+  });
 }
 
 export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticated }: AuthModalProps) {
-  const { signIn, signUp, resetPassword, isAuthenticated } = useOptionalAuth();
+  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated } = useOptionalAuth();
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,14 +99,16 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticat
   
   // OAuth state
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+  const googleLoginButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleSignupButtonRef = useRef<HTMLDivElement | null>(null);
 
-  const finishAuthenticated = () => {
+  const finishAuthenticated = useCallback(() => {
     if (onAuthenticated) {
       onAuthenticated();
       return;
     }
     onClose();
-  };
+  }, [onAuthenticated, onClose]);
 
   useEffect(() => {
     const storedCode = getStoredReferralCode();
@@ -94,8 +131,6 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticat
       setSuccess(null);
     }
   }, [defaultTab, isOpen]);
-
-  if (!isOpen) return null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,11 +211,74 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticat
     setIsLoading(false);
   };
 
-  const handleOAuthSignIn = async (_provider: Provider) => {
+  const handleGoogleCredential = useCallback(async (response: GoogleCredentialResponse) => {
+    if (!response.credential) {
+      setError('Google did not return a sign-in credential. Please try again.');
+      return;
+    }
+
     setIsOAuthLoading(true);
-    setError('OAuth sign-in is no longer supported. Please use email and password.');
+    setError(null);
+
+    const { error } = await signInWithGoogle(response.credential, {
+      first_name: firstName || undefined,
+      last_name: lastName || undefined,
+      promo_code: promoCode || undefined,
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      finishAuthenticated();
+    }
+
     setIsOAuthLoading(false);
-  };
+  }, [finishAuthenticated, firstName, lastName, promoCode, signInWithGoogle]);
+
+  useEffect(() => {
+    if (!isOpen || !googleClientId) return;
+
+    let cancelled = false;
+    const renderGoogleButtons = async () => {
+      try {
+        await loadGoogleIdentityScript();
+        if (cancelled || !window.google?.accounts?.id) return;
+
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleCredential,
+          ux_mode: 'popup',
+        });
+
+        const renderInto = (element: HTMLDivElement | null, text: 'signin_with' | 'signup_with') => {
+          if (!element || element.childElementCount > 0) return;
+          window.google?.accounts.id.renderButton(element, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            shape: 'rectangular',
+            text,
+            width: Math.min(Math.max(element.clientWidth || 320, 240), 380),
+          });
+        };
+
+        renderInto(googleLoginButtonRef.current, 'signin_with');
+        renderInto(googleSignupButtonRef.current, 'signup_with');
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Google sign-in could not load.');
+        }
+      }
+    };
+
+    void renderGoogleButtons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, googleClientId, handleGoogleCredential, isOpen]);
+
+  if (!isOpen) return null;
 
   // If already authenticated, show success message
   if (isAuthenticated) {
@@ -349,26 +447,23 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticat
                     {isLoading ? 'Signing in...' : 'Sign In'}
                   </Button>
 
-                  {/* OAuth Sign In Options */}
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <Separator className="w-full" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-blue-50 px-2 text-slate-600">Or continue with</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-blue-200 bg-white text-slate-950 hover:bg-blue-50"
-                    onClick={() => handleOAuthSignIn('google')}
-                    disabled={isOAuthLoading}
-                  >
-                    <GoogleIcon className="w-4 h-4 mr-2" />
-                    {isOAuthLoading ? 'Connecting...' : 'Google'}
-                  </Button>
+                  {googleClientId && (
+                    <>
+                      <div className="relative my-4">
+                        <div className="absolute inset-0 flex items-center">
+                          <Separator className="w-full" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-blue-50 px-2 text-slate-600">Or continue with</span>
+                        </div>
+                      </div>
+                      <div
+                        ref={googleLoginButtonRef}
+                        className="flex min-h-11 w-full items-center justify-center overflow-hidden rounded-md bg-white"
+                        aria-busy={isOAuthLoading}
+                      />
+                    </>
+                  )}
 
                   <p className="text-xs text-slate-600 text-center">
                     You can also use the app without signing in. Your data will be stored locally.
@@ -490,26 +585,23 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login', onAuthenticat
                     {isLoading ? 'Signing up...' : 'Sign Up'}
                   </Button>
 
-                  {/* OAuth Sign Up Options */}
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <Separator className="w-full" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-blue-50 px-2 text-slate-600">Or sign up with</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-blue-200 bg-white text-slate-950 hover:bg-blue-50"
-                    onClick={() => handleOAuthSignIn('google')}
-                    disabled={isOAuthLoading}
-                  >
-                    <GoogleIcon className="w-4 h-4 mr-2" />
-                    {isOAuthLoading ? 'Connecting...' : 'Google'}
-                  </Button>
+                  {googleClientId && (
+                    <>
+                      <div className="relative my-4">
+                        <div className="absolute inset-0 flex items-center">
+                          <Separator className="w-full" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-blue-50 px-2 text-slate-600">Or sign up with</span>
+                        </div>
+                      </div>
+                      <div
+                        ref={googleSignupButtonRef}
+                        className="flex min-h-11 w-full items-center justify-center overflow-hidden rounded-md bg-white"
+                        aria-busy={isOAuthLoading}
+                      />
+                    </>
+                  )}
 
                   <p className="text-xs text-slate-600 text-center">
                     By signing up, you agree to our Terms of Service and Privacy Policy.

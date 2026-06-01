@@ -2,6 +2,8 @@ import os
 import uuid
 from urllib.parse import urlencode
 from flask import Blueprint, request, jsonify
+import jwt
+from jwt import PyJWKClient
 from auth import (
     hash_password, verify_password, create_token, create_refresh_token,
     create_password_reset_token, decode_token, require_auth, require_admin, optional_auth
@@ -11,6 +13,8 @@ from email_service import send_password_reset_message, send_welcome_email
 from lifecycle_messages import send_lifecycle_dashboard_message
 
 auth_bp = Blueprint('auth', __name__)
+GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs'
+google_jwks_client = PyJWKClient(GOOGLE_JWKS_URL)
 
 
 def send_password_reset_email(email: str, reset_token: str, redirect_to: str | None = None):
@@ -24,6 +28,24 @@ def send_password_reset_email(email: str, reset_token: str, redirect_to: str | N
         print(f"[DEV] Password reset for {email}: {reset_url}")
 
     return result.get('success', False)
+
+
+def verify_google_credential(credential: str):
+    client_id = os.getenv('GOOGLE_CLIENT_ID') or os.getenv('VITE_GOOGLE_CLIENT_ID')
+    if not client_id:
+        raise RuntimeError('Google sign-in is not configured')
+
+    signing_key = google_jwks_client.get_signing_key_from_jwt(credential)
+    payload = jwt.decode(
+        credential,
+        signing_key.key,
+        algorithms=['RS256'],
+        audience=client_id,
+        options={'verify_iss': False},
+    )
+    if payload.get('iss') not in {'https://accounts.google.com', 'accounts.google.com'}:
+        raise jwt.InvalidIssuerError('Invalid Google token issuer')
+    return payload
 
 
 @auth_bp.route('/signup', methods=['POST'])
@@ -114,11 +136,14 @@ def signin():
         return jsonify({'error': 'Email and password are required'}), 400
 
     user = db.query_one("SELECT id, email, password_hash FROM users WHERE email = %s", (email,))
-    if not user or not verify_password(password, user['password_hash']):
+    if not user:
         return jsonify({'error': 'Invalid login credentials'}), 401
 
     if not user.get('password_hash'):
         return jsonify({'error': 'Please use social login or reset your password'}), 401
+
+    if not verify_password(password, user['password_hash']):
+        return jsonify({'error': 'Invalid login credentials'}), 401
 
     profile = db.query_one("SELECT role FROM user_profiles WHERE user_id = %s", (user['id'],))
     role = profile['role'] if profile else 'user'
@@ -134,6 +159,87 @@ def signin():
         'refresh_token': refresh,
         'token_type': 'bearer',
         'expires_in': int(os.getenv('JWT_EXPIRY_HOURS', '168')) * 3600,
+    })
+
+
+@auth_bp.route('/google', methods=['POST'])
+def google_signin():
+    data = request.get_json() or {}
+    credential = data.get('credential') or data.get('idToken') or ''
+    metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
+
+    if not credential:
+        return jsonify({'error': 'Google credential is required'}), 400
+
+    try:
+        payload = verify_google_credential(credential)
+    except RuntimeError as e:
+        return jsonify({'error': str(e), 'code': 'GOOGLE_AUTH_NOT_CONFIGURED'}), 503
+    except Exception:
+        return jsonify({'error': 'Google sign-in could not be verified'}), 401
+
+    email = str(payload.get('email') or '').strip().lower()
+    if not email or not payload.get('email_verified'):
+        return jsonify({'error': 'Google account email must be verified'}), 401
+
+    first_name = str(metadata.get('first_name') or payload.get('given_name') or '').strip() or None
+    last_name = str(metadata.get('last_name') or payload.get('family_name') or '').strip() or None
+    display_name = str(payload.get('name') or f"{first_name or ''} {last_name or ''}".strip() or email).strip()
+    promo_code = str(metadata.get('promo_code') or '').strip() or None
+
+    existing = db.query_one("SELECT id, email FROM users WHERE email = %s", (email,))
+    is_new_user = False
+    if existing:
+        user_id = str(existing['id'])
+    else:
+        user_id = str(uuid.uuid4())
+        db.execute(
+            "INSERT INTO users (id, email, password_hash) VALUES (%s, %s, NULL)",
+            (user_id, email)
+        )
+        is_new_user = True
+
+    db.execute(
+        """
+        UPDATE user_profiles
+        SET first_name = COALESCE(NULLIF(first_name, ''), %s),
+            last_name = COALESCE(NULLIF(last_name, ''), %s),
+            display_name = CASE
+                WHEN display_name IS NULL OR display_name = '' OR display_name = email THEN %s
+                ELSE display_name
+            END,
+            referral_code = COALESCE(NULLIF(referral_code, ''), %s),
+            updated_at = now()
+        WHERE user_id = %s
+        """,
+        (first_name, last_name, display_name, promo_code, user_id)
+    )
+
+    if is_new_user:
+        try:
+            send_welcome_email(email, first_name)
+        except Exception as e:
+            print(f"Welcome email failed for {email}: {e}")
+
+        try:
+            send_lifecycle_dashboard_message(user_id, email, 'signup')
+        except Exception as e:
+            print(f"Dashboard welcome message failed for {email}: {e}")
+
+    profile = db.query_one("SELECT role FROM user_profiles WHERE user_id = %s", (user_id,))
+    role = profile['role'] if profile else 'user'
+    token = create_token(user_id, email, role)
+    refresh = create_refresh_token(user_id)
+
+    return jsonify({
+        'user': {'id': user_id, 'email': email, 'role': role},
+        'accessToken': token,
+        'refreshToken': refresh,
+        'access_token': token,
+        'refresh_token': refresh,
+        'token_type': 'bearer',
+        'expires_in': int(os.getenv('JWT_EXPIRY_HOURS', '168')) * 3600,
+        'isNewUser': is_new_user,
     })
 
 

@@ -43,7 +43,7 @@ def _clean_subject(subject: str) -> str:
 
 
 def _tag_data(tags: Optional[List[Dict[str, str]]]) -> Dict[str, object]:
-    data: Dict[str, object] = {'source': {'value': 'interviewready', 'persistent': False}}
+    data: Dict[str, object] = {'source': {'value': 'spouse_interview', 'persistent': False}}
 
     for tag in tags or []:
         name = ''.join(ch if ch.isalnum() else '_' for ch in str(tag.get('name') or '').strip()).strip('_')
@@ -57,7 +57,7 @@ def _tag_data(tags: Optional[List[Dict[str, str]]]) -> Dict[str, object]:
 def _idempotency_key(*parts: str) -> str:
     source = '|'.join(part or '' for part in parts)
     digest = hashlib.sha256(source.encode('utf-8')).hexdigest()
-    return f'interviewready-{digest}'
+    return f'spouse-interview-{digest}'
 
 
 def _rich_email_fragment(value: str) -> str:
@@ -117,7 +117,7 @@ def send_email(
         'Content-Type': 'application/json',
     }
     if idempotency_key:
-        payload['headers'] = {'X-InterviewReady-Idempotency-Key': idempotency_key[:256]}
+        payload['headers'] = {'X-Spouse-Interview-Idempotency-Key': idempotency_key[:256]}
 
     timeout_seconds = float(os.getenv('PLUNK_TIMEOUT_SECONDS', '5'))
     send_url = os.getenv('PLUNK_API_URL', PLUNK_SEND_URL)

@@ -464,7 +464,7 @@ def _build_support_messages(category, subject, message, context=None, conversati
         f"Refund status signal: {refund.get('status') or 'unknown'} - {refund.get('note') or 'none'}"
     ) if context else 'No signed-in account context is available.'
     system_prompt = (
-        "You are InterviewReady support assistant. Help users with billing, refunds, account access, "
+        "You are Spouse Interview support assistant. Help users with billing, refunds, account access, "
         "technical problems, and app usage. The app includes Robin AI interview practice, premium PDF "
         "downloads, readiness tools, timeline/practice dashboards, Stripe billing, refund requests, "
         "and admin support messages. Be factual, calm, and concise. Do not give legal advice. "
@@ -638,7 +638,7 @@ def _build_admin_support_messages(ticket, context, refund_signal):
     usage = context.get('usage') or {}
     subscription = context.get('subscription') or {}
     system_prompt = (
-        "You are InterviewReady's admin support copilot. Draft factual, concise replies for a human "
+        "You are Spouse Interview's admin support copilot. Draft factual, concise replies for a human "
         "admin to review before sending. Do not promise a refund, do not admit fault, and do not give "
         "legal advice. For unauthorized transaction claims, prioritize calm manual review. If a retention "
         "offer is eligible, mention it as an optional lower-cost alternative without pressure. Return only "
@@ -748,7 +748,7 @@ def _build_dashboard_agent_messages(question, recent_memory, context):
         context_text = json.dumps(compact_context)
 
     system_prompt = (
-        "You are Robin, InterviewReady's virtual immigration interview assistant. Always remember "
+        "You are Robin, Spouse Interview's virtual immigration interview assistant. Always remember "
         "that your name is Robin. Help users prepare for a USCIS marriage green card interview, "
         "understand app features, track practice next steps, and find billing or support paths. "
         "You can answer general immigration process and interview-preparation questions, but do "

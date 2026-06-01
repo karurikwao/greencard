@@ -17,13 +17,21 @@ AdminSupportDraftResponse,
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+function normalizeBrandText(value: unknown): string {
+return String(value || '')
+.replace(/\bInterviewReady\b/g, 'Spouse Interview')
+.replace(/\bInterview Ready\b/g, 'Spouse Interview')
+.replace(/interviewready\.com/gi, 'SpouseInterview.com')
+.replace(/interviewready\.app/gi, 'SpouseInterview.com');
+}
+
 function normalizeNotification(row: Record<string, unknown>): UserNotification {
 return {
 id: String(row.id || ''),
 userId: String(row.userId || row.user_id || ''),
 type: (row.type || 'general') as UserNotification['type'],
-title: String(row.title || ''),
-message: String(row.message || ''),
+title: normalizeBrandText(row.title),
+message: normalizeBrandText(row.message),
 isRead: Boolean(row.isRead ?? row.is_read ?? false),
 actionUrl: (row.actionUrl || row.action_url || undefined) as string | undefined,
 metadata: (row.metadata || {}) as Record<string, unknown>,

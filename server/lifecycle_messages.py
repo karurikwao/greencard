@@ -9,7 +9,7 @@ DEFAULT_WELCOME_MESSAGES = {
     'signupEnabled': True,
     'upgradeEnabled': True,
     'sendEmail': True,
-    'signupTitle': 'Welcome to InterviewReady',
+    'signupTitle': 'Welcome to Spouse Interview',
     'signupMessage': 'Your free account is ready. Start with your dashboard, build your timeline, and save questions for later review.',
     'upgradeTitle': 'Premium access unlocked',
     'upgradeMessage': 'Thank you for upgrading. Your premium downloads, partner sync, and Robin practice access are now available in your dashboard.',
@@ -56,4 +56,3 @@ def send_lifecycle_dashboard_message(user_id, email, event_type):
             pass
 
     return True
-
