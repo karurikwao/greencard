@@ -38,7 +38,7 @@ jobs:
         env:
           VITE_API_URL: ""
         run: |
-          # Codex trigger: 2026-06-01 admin support links, pricing spinner, memory panel
+          # Codex trigger: 2026-06-01 pricing top scroll and card-only Stripe Checkout
           npm run build
 
       - name: Package runtime bundle
