@@ -71,6 +71,7 @@ interface DashboardProps {
   onUpgrade: () => void;
   onOpenMessagesPage?: () => void;
   onOpenRobinPage?: () => void;
+  onOpenPDFLibrary?: () => void;
   onViewAdmin?: () => void;
   canViewAdmin?: boolean;
 }
@@ -85,6 +86,15 @@ interface PartnerDashboardSummary {
   partnerNeedsPractice: number;
 }
 
+function getPlainMessagePreview(message: string) {
+  return message
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function Dashboard({
   onPracticeTopic,
   onStartQuickPractice,
@@ -97,6 +107,7 @@ export function Dashboard({
   onUpgrade,
   onOpenMessagesPage,
   onOpenRobinPage,
+  onOpenPDFLibrary,
   onViewAdmin,
   canViewAdmin = false,
 }: DashboardProps) {
@@ -604,11 +615,18 @@ export function Dashboard({
     }
     document.getElementById('dashboard-robin')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const openPDFLibrary = () => {
+    if (onOpenPDFLibrary) {
+      onOpenPDFLibrary();
+      return;
+    }
+    document.getElementById('dashboard-pdf-library')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const cardClass = 'border-2 border-blue-200 bg-white shadow-xl shadow-slate-200/70';
   const surfaceClass = 'rounded-xl border-2 border-blue-200 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-4 shadow-md shadow-blue-100/70';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-slate-50 to-amber-50/40 pb-20 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-slate-50 to-amber-50/40 pb-28 text-slate-900 md:pb-20">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-blue-100 bg-white/95 shadow-sm shadow-blue-100/60 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
@@ -1029,15 +1047,28 @@ export function Dashboard({
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className={cn(cardClass, 'bg-gradient-to-br from-white to-blue-50/60')}>
+          <Card id="dashboard-pdf-library" className={cn(cardClass, 'bg-gradient-to-br from-white to-blue-50/60')}>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-slate-950">
-                <Download className="w-4 h-4 text-slate-600" />
-                Purchased PDF Library
-              </CardTitle>
-              <p className="text-sm text-slate-700">
-                Paid accounts can download these study packs directly from the dashboard.
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2 text-slate-950">
+                    <Download className="w-4 h-4 text-slate-600" />
+                    Purchased PDF Library
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Paid accounts can access study packs by topic.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openPDFLibrary}
+                  className="shrink-0 border-blue-200 bg-white font-bold text-blue-800 hover:bg-blue-50"
+                >
+                  View all
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {pdfLibraryTopics.map(topic => (
@@ -1053,11 +1084,21 @@ export function Dashboard({
                     categoryId={topic.categoryId}
                     source="direct_link"
                     size="sm"
-                    label={hasPremium ? 'Download' : 'Premium'}
+                    label={hasPremium ? 'Access' : 'Premium'}
                     className="shrink-0"
                   />
                 </div>
               ))}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={openPDFLibrary}
+                className="w-full font-extrabold text-blue-800 hover:bg-blue-50 hover:text-blue-950"
+              >
+                Open full PDF library
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
 
@@ -1413,11 +1454,52 @@ export function Dashboard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <nav className="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-blue-100 bg-white/95 px-2 py-2 shadow-2xl shadow-blue-200/60 backdrop-blur md:hidden">
+        <div className="grid grid-cols-4 gap-1">
+          <button
+            type="button"
+            onClick={onStartQuickPractice}
+            className="flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-extrabold text-slate-700 hover:bg-blue-50 hover:text-blue-800"
+          >
+            <ClipboardCheck className="h-5 w-5" />
+            Practice
+          </button>
+          <button
+            type="button"
+            onClick={openRobin}
+            className="flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-extrabold text-slate-700 hover:bg-indigo-50 hover:text-indigo-800"
+          >
+            <Bot className="h-5 w-5" />
+            Robin
+          </button>
+          <button
+            type="button"
+            onClick={openPDFLibrary}
+            className="flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-extrabold text-slate-700 hover:bg-cyan-50 hover:text-cyan-800"
+          >
+            <Download className="h-5 w-5" />
+            PDFs
+          </button>
+          <button
+            type="button"
+            onClick={openMessageCenter}
+            className="relative flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-extrabold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
+          >
+            <Bell className="h-5 w-5" />
+            Messages
+            {unreadNotifications.length > 0 && (
+              <span className="absolute right-3 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-extrabold leading-none text-white">
+                {unreadNotifications.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </nav>
       {latestUnreadNotification && !messageToastDismissed && (
         <button
           type="button"
           onClick={openMessageCenter}
-          className="fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-2xl border-2 border-emerald-200 bg-white p-4 text-left shadow-2xl shadow-emerald-200/70 transition hover:-translate-y-0.5 hover:border-emerald-400"
+          className="fixed bottom-24 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-2xl border-2 border-emerald-200 bg-white p-4 text-left shadow-2xl shadow-emerald-200/70 transition hover:-translate-y-0.5 hover:border-emerald-400 md:bottom-4"
         >
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 text-white shadow-md shadow-emerald-200">
@@ -1429,7 +1511,7 @@ export function Dashboard({
                 <Badge className="border-0 bg-rose-600 text-white">{unreadNotifications.length}</Badge>
               </div>
               <p className="mt-1 line-clamp-1 text-sm font-extrabold text-slate-950">{latestUnreadNotification.title}</p>
-              <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-700">{latestUnreadNotification.message}</p>
+              <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-700">{getPlainMessagePreview(latestUnreadNotification.message)}</p>
               <span className="mt-2 inline-flex items-center text-sm font-extrabold text-blue-800">
                 Open message center
                 <ArrowRight className="ml-1 h-4 w-4" />

@@ -46,7 +46,7 @@ export function Contact() {
             </a>
             <div className="flex items-center gap-2">
               <Heart className="h-6 w-6 text-rose-500" />
-              <span className="font-bold text-slate-900">InterviewReady</span>
+              <span className="font-bold text-slate-900">Spouse Interview</span>
             </div>
           </div>
         </div>
@@ -72,8 +72,8 @@ export function Contact() {
               </div>
               <CardTitle className="text-lg">Email Us</CardTitle>
               <CardDescription className="text-sm">
-                <a href="mailto:hello@interviewready.app" className="text-blue-600 hover:underline font-medium">
-                  hello@interviewready.app
+                <a href="mailto:hello@spouseinterview.com" className="text-blue-600 hover:underline font-medium">
+                  hello@spouseinterview.com
                 </a>
               </CardDescription>
             </CardHeader>
@@ -86,8 +86,8 @@ export function Contact() {
               </div>
               <CardTitle className="text-lg">Support</CardTitle>
               <CardDescription className="text-sm">
-                <a href="mailto:support@interviewready.app" className="text-blue-600 hover:underline font-medium">
-                  support@interviewready.app
+                <a href="mailto:support@spouseinterview.com" className="text-blue-600 hover:underline font-medium">
+                  support@spouseinterview.com
                 </a>
               </CardDescription>
             </CardHeader>
@@ -100,8 +100,8 @@ export function Contact() {
               </div>
               <CardTitle className="text-lg">Feedback</CardTitle>
               <CardDescription className="text-sm">
-                <a href="mailto:feedback@interviewready.app" className="text-blue-600 hover:underline font-medium">
-                  feedback@interviewready.app
+                <a href="mailto:feedback@spouseinterview.com" className="text-blue-600 hover:underline font-medium">
+                  feedback@spouseinterview.com
                 </a>
               </CardDescription>
             </CardHeader>
@@ -200,7 +200,7 @@ export function Contact() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="border-2 border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base font-bold text-slate-900">Is InterviewReady really free?</CardTitle>
+                <CardTitle className="text-base font-bold text-slate-900">Is Spouse Interview really free?</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-slate-700 text-sm font-medium">
@@ -226,7 +226,7 @@ export function Contact() {
               </CardHeader>
               <CardContent>
                 <p className="text-slate-700 text-sm font-medium">
-                  Absolutely! InterviewReady is fully responsive and works great on mobile devices. You can even install it as an app on your home screen.
+                  Absolutely! Spouse Interview is fully responsive and works great on mobile devices. You can even install it as an app on your home screen.
                 </p>
               </CardContent>
             </Card>
@@ -237,7 +237,7 @@ export function Contact() {
               </CardHeader>
               <CardContent>
                 <p className="text-slate-700 text-sm font-medium">
-                  If you encounter any issues, please email us at support@interviewready.app with details about the problem and we&apos;ll help you resolve it.
+                  If you encounter any issues, please email us at support@spouseinterview.com with details about the problem and we&apos;ll help you resolve it.
                 </p>
               </CardContent>
             </Card>
@@ -248,7 +248,7 @@ export function Contact() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-8 mt-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-sm">© {new Date().getFullYear()} InterviewReady. All rights reserved.</p>
+          <p className="text-sm">© {new Date().getFullYear()} Spouse Interview. All rights reserved.</p>
         </div>
       </footer>
     </div>

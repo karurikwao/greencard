@@ -1,5 +1,5 @@
-// Service Worker for InterviewReady PWA
-const CACHE_NAME = 'interviewready-v1';
+// Service Worker for Spouse Interview PWA
+const CACHE_NAME = 'spouse-interview-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

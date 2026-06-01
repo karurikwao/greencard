@@ -21,7 +21,7 @@ export function Terms() {
             </a>
             <div className="flex items-center gap-2">
               <FileText className="h-6 w-6 text-blue-600" />
-              <span className="font-bold text-slate-900">InterviewReady</span>
+              <span className="font-bold text-slate-900">Spouse Interview</span>
             </div>
           </div>
         </div>
@@ -42,14 +42,14 @@ export function Terms() {
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-3">1. Acceptance of Terms</h2>
               <p className="text-slate-700 leading-relaxed">
-                By accessing and using InterviewReady (&ldquo;the Service&rdquo;), you accept and agree to be bound by the terms and provisions of this agreement. If you do not agree to abide by these terms, please do not use this Service.
+                By accessing and using Spouse Interview (&ldquo;the Service&rdquo;), you accept and agree to be bound by the terms and provisions of this agreement. If you do not agree to abide by these terms, please do not use this Service.
               </p>
             </section>
 
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-3">2. Description of Service</h2>
               <p className="text-slate-700 leading-relaxed">
-                InterviewReady provides free practice resources, including questions, sample answers, checklists, and tools to help couples prepare for marriage-based immigration interviews. All resources are provided for educational and practice purposes only.
+                Spouse Interview provides free practice resources, including questions, sample answers, checklists, and tools to help couples prepare for marriage-based immigration interviews. All resources are provided for educational and practice purposes only.
               </p>
             </section>
 
@@ -60,7 +60,7 @@ export function Terms() {
               </h2>
               <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
                 <p className="text-amber-800 leading-relaxed font-medium">
-                  <strong>NOT LEGAL ADVICE:</strong> The content provided on InterviewReady is for informational and educational purposes only. It does not constitute legal advice, nor does it create an attorney-client relationship. Immigration laws and procedures are complex and subject to change. We strongly recommend consulting with a qualified immigration attorney for advice specific to your situation.
+                  <strong>NOT LEGAL ADVICE:</strong> The content provided on Spouse Interview is for informational and educational purposes only. It does not constitute legal advice, nor does it create an attorney-client relationship. Immigration laws and procedures are complex and subject to change. We strongly recommend consulting with a qualified immigration attorney for advice specific to your situation.
                 </p>
               </div>
             </section>
@@ -82,7 +82,7 @@ export function Terms() {
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-3">5. Intellectual Property</h2>
               <p className="text-slate-700 leading-relaxed">
-                All content on InterviewReady, including but not limited to text, graphics, logos, icons, images, audio clips, digital downloads, and software, is the property of InterviewReady or its content suppliers and is protected by international copyright laws. You may download and print materials for personal, non-commercial use only.
+                All content on Spouse Interview, including but not limited to text, graphics, logos, icons, images, audio clips, digital downloads, and software, is the property of Spouse Interview or its content suppliers and is protected by international copyright laws. You may download and print materials for personal, non-commercial use only.
               </p>
             </section>
 
@@ -96,7 +96,7 @@ export function Terms() {
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-3">7. Limitation of Liability</h2>
               <p className="text-slate-700 leading-relaxed">
-                In no event shall InterviewReady, its directors, employees, partners, agents, suppliers, or affiliates be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from:
+                In no event shall Spouse Interview, its directors, employees, partners, agents, suppliers, or affiliates be liable for any indirect, incidental, special, consequential, or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from:
               </p>
               <ul className="list-disc list-inside ml-4 space-y-1 text-slate-700 mt-3">
                 <li>Your access to or use of or inability to access or use the Service</li>
@@ -116,7 +116,7 @@ export function Terms() {
             <section>
               <h2 className="text-xl font-bold text-slate-900 mb-3">9. Third-Party Links</h2>
               <p className="text-slate-700 leading-relaxed">
-                Our Service may contain links to third-party websites or services that are not owned or controlled by InterviewReady. We have no control over, and assume no responsibility for, the content, privacy policies, or practices of any third-party websites or services.
+                Our Service may contain links to third-party websites or services that are not owned or controlled by Spouse Interview. We have no control over, and assume no responsibility for, the content, privacy policies, or practices of any third-party websites or services.
               </p>
             </section>
 
@@ -150,8 +150,8 @@ export function Terms() {
                 If you have any questions about these Terms, please contact us:
               </p>
               <div className="bg-slate-100 rounded-lg p-4">
-                <p className="text-slate-700"><strong>Email:</strong> legal@interviewready.app</p>
-                <p className="text-slate-700"><strong>Website:</strong> <a href="/" className="text-blue-600 hover:underline">interviewready.app</a></p>
+                <p className="text-slate-700"><strong>Email:</strong> legal@spouseinterview.com</p>
+                <p className="text-slate-700"><strong>Website:</strong> <a href="/" className="text-blue-600 hover:underline">www.SpouseInterview.com</a></p>
               </div>
             </section>
           </CardContent>
@@ -167,7 +167,7 @@ export function Terms() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-8 mt-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-sm">© {new Date().getFullYear()} InterviewReady. All rights reserved.</p>
+          <p className="text-sm">© {new Date().getFullYear()} Spouse Interview. All rights reserved.</p>
         </div>
       </footer>
     </div>

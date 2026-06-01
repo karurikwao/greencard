@@ -131,6 +131,7 @@ import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { AccountSettingsPage } from '@/pages/AccountSettingsPage';
 import { MessagesPage } from '@/pages/MessagesPage';
 import { RobinPage } from '@/pages/RobinPage';
+import { PDFLibraryPage } from '@/pages/PDFLibraryPage';
 import { usePricing } from '@/hooks/usePricing';
 import { cn } from '@/lib/utils';
 import { AnnouncementBanner, TrustSnippets, ContentBlocks } from '@/components/content';
@@ -141,7 +142,7 @@ import { SecurePDFDownload } from '@/components/paywall';
 import './App.css';
 
 // ==================== ROUTING ====================
-type Page = 'home' | 'privacy' | 'terms' | 'contact' | 'dashboard' | 'messages' | 'robin' | 'timeline-builder' | 'question' | 'readiness' | 'stress-review' | 'invite' | 'topic' | 'situation' | 'top-questions' | 'question-database' | 'authority-preparation' | 'ai-interview' | 'pricing' | 'billing-success' | 'billing-cancel' | 'refund-policy' | 'terms-of-service' | 'pillar' | 'supporting' | 'interview-topics' | 'reset-password' | 'account';
+type Page = 'home' | 'privacy' | 'terms' | 'contact' | 'dashboard' | 'messages' | 'robin' | 'pdf-library' | 'timeline-builder' | 'question' | 'readiness' | 'stress-review' | 'invite' | 'topic' | 'situation' | 'top-questions' | 'question-database' | 'authority-preparation' | 'ai-interview' | 'pricing' | 'billing-success' | 'billing-cancel' | 'refund-policy' | 'terms-of-service' | 'pillar' | 'supporting' | 'interview-topics' | 'reset-password' | 'account';
 
 function usePage() {
   const [page, setPage] = useState<Page>('home');
@@ -187,6 +188,7 @@ function usePage() {
     else if (path === '/dashboard') setPage('dashboard');
     else if (path === '/messages') setPage('messages');
     else if (path === '/robin') setPage('robin');
+    else if (path === '/pdf-library') setPage('pdf-library');
     else if (path === '/relationship-timeline-builder') setPage('timeline-builder');
     else if (path === '/readiness') setPage('readiness');
     else if (path === '/stress-review') setPage('stress-review');
@@ -269,6 +271,7 @@ function usePage() {
     else if (newPage === 'pricing') path = '/pricing';
     else if (newPage === 'messages') path = '/messages';
     else if (newPage === 'robin') path = '/robin';
+    else if (newPage === 'pdf-library') path = '/pdf-library';
     else if (newPage === 'timeline-builder') path = '/relationship-timeline-builder';
     else if (newPage === 'billing-success') path = '/billing/success';
     else if (newPage === 'billing-cancel') path = '/billing/cancel';
@@ -347,7 +350,7 @@ function PWAInstallPrompt() {
                 <Heart className="h-6 w-6 text-white" />
               </div>
               <div>
-                <CardTitle className="text-base">Install InterviewReady</CardTitle>
+                <CardTitle className="text-base">Install Spouse Interview</CardTitle>
                 <CardDescription className="text-xs">Add to your home screen for easy access</CardDescription>
               </div>
             </div>
@@ -583,7 +586,7 @@ function Navigation({
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('home')}>
             <Heart className={`h-6 w-6 transition-colors duration-300 ${scrolled ? 'text-rose-500' : 'text-rose-400'}`} />
-            <span className={`font-bold text-lg transition-colors duration-300 ${scrolled ? 'text-slate-800' : 'text-white'}`}>InterviewReady</span>
+            <span className={`font-bold text-lg transition-colors duration-300 ${scrolled ? 'text-slate-800' : 'text-white'}`}>Spouse Interview</span>
           </div>
           
           {/* Desktop Navigation */}
@@ -1710,7 +1713,7 @@ function PrintableChecklistSection() {
           </div>
 
           <div className="mt-8 pt-6 border-t text-center text-sm text-slate-500 font-medium">
-            <p>Generated from InterviewReady - Free Marriage-Based Immigration Interview Practice</p>
+            <p>Generated from Spouse Interview - Free Marriage-Based Immigration Interview Practice</p>
           </div>
         </div>
       </div>
@@ -1849,7 +1852,7 @@ function Footer({ navigate, onAdminClick }: { navigate: (page: Page) => void; on
           <div>
             <div className="flex items-center gap-2 mb-4">
               <Heart className="h-6 w-6 text-rose-500" />
-              <span className="font-bold text-white text-lg">InterviewReady</span>
+              <span className="font-bold text-white text-lg">Spouse Interview</span>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed font-medium">
               Free marriage green card interview questions and practice resources for couples preparing for their USCIS interview. Study together and build confidence.
@@ -1913,7 +1916,7 @@ function Footer({ navigate, onAdminClick }: { navigate: (page: Page) => void; on
         </div>
         
         <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-500 font-medium">
-          <p>© {new Date().getFullYear()} InterviewReady. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Spouse Interview. All rights reserved.</p>
           <button 
             onClick={onAdminClick}
             className="mt-2 text-slate-600 hover:text-slate-400 transition-colors text-xs flex items-center justify-center gap-1 mx-auto"
@@ -2176,6 +2179,7 @@ function HomePage({
           onUpgrade={() => navigate('pricing')}
           onOpenMessagesPage={() => navigate('messages')}
           onOpenRobinPage={() => navigate('robin')}
+          onOpenPDFLibrary={() => navigate('pdf-library')}
           onViewAdmin={() => setShowAdmin(true)}
           canViewAdmin={isAdmin || isSuperAdmin}
         />
@@ -2365,6 +2369,7 @@ function App() {
             {page === 'dashboard' && <HomePage navigate={navigate} initialViewMode="dashboard" />}
             {page === 'messages' && <MessagesPage onBack={() => navigate('dashboard')} />}
             {page === 'robin' && <RobinPage onBack={() => navigate('dashboard')} />}
+            {page === 'pdf-library' && <PDFLibraryPage onBack={() => navigate('dashboard')} />}
             {page === 'timeline-builder' && <RelationshipTimelinePage onBack={navigateToAppBack} />}
             {page === 'readiness' && <HomePage navigate={navigate} initialViewMode="readiness" />}
             {page === 'stress-review' && <HomePage navigate={navigate} initialViewMode="stress-review" />}

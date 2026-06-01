@@ -35,7 +35,7 @@ export function TermsOfService({ onBack }: TermsOfServiceProps) {
             Terms of Service
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Please read these terms carefully before using InterviewReady.
+            Please read these terms carefully before using Spouse Interview.
           </p>
         </div>
 
@@ -49,7 +49,7 @@ export function TermsOfService({ onBack }: TermsOfServiceProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-slate-600">
-              InterviewReady is an online platform that provides practice resources and tools 
+              Spouse Interview is an online platform that provides practice resources and tools 
               for couples preparing for marriage-based green card interviews with USCIS. Our 
               services include:
             </p>
@@ -101,7 +101,7 @@ export function TermsOfService({ onBack }: TermsOfServiceProps) {
           <CardContent className="space-y-4">
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <p className="text-amber-800 font-medium mb-2">
-                InterviewReady is not a law firm and does not provide legal advice.
+                Spouse Interview is not a law firm and does not provide legal advice.
               </p>
               <p className="text-amber-700 text-sm">
                 The information, materials, and tools provided on this platform are for educational 
@@ -187,7 +187,7 @@ export function TermsOfService({ onBack }: TermsOfServiceProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-slate-600">
-              To the maximum extent permitted by law, InterviewReady and its affiliates, officers, 
+              To the maximum extent permitted by law, Spouse Interview and its affiliates, officers, 
               employees, agents, and licensors shall not be liable for:
             </p>
             <ul className="list-disc list-inside space-y-2 text-slate-600 ml-4">

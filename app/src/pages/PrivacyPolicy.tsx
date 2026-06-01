@@ -21,7 +21,7 @@ export function PrivacyPolicy() {
             </a>
             <div className="flex items-center gap-2">
               <Shield className="h-6 w-6 text-blue-600" />
-              <span className="font-bold text-slate-900">InterviewReady</span>
+              <span className="font-bold text-slate-900">Spouse Interview</span>
             </div>
           </div>
         </div>
@@ -45,7 +45,7 @@ export function PrivacyPolicy() {
                 Introduction
               </h2>
               <p className="text-slate-700 leading-relaxed">
-                InterviewReady (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services. Please read this privacy policy carefully. If you do not agree with the terms of this privacy policy, please do not access the site.
+                Spouse Interview (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services. Please read this privacy policy carefully. If you do not agree with the terms of this privacy policy, please do not access the site.
               </p>
             </section>
 
@@ -148,8 +148,8 @@ export function PrivacyPolicy() {
                 If you have any questions about this Privacy Policy, please contact us:
               </p>
               <div className="bg-slate-100 rounded-lg p-4">
-                <p className="text-slate-700"><strong>Email:</strong> privacy@interviewready.app</p>
-                <p className="text-slate-700"><strong>Website:</strong> <a href="/" className="text-blue-600 hover:underline">interviewready.app</a></p>
+                <p className="text-slate-700"><strong>Email:</strong> privacy@spouseinterview.com</p>
+                <p className="text-slate-700"><strong>Website:</strong> <a href="/" className="text-blue-600 hover:underline">www.SpouseInterview.com</a></p>
               </div>
             </section>
           </CardContent>
@@ -165,7 +165,7 @@ export function PrivacyPolicy() {
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-8 mt-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-sm">© {new Date().getFullYear()} InterviewReady. All rights reserved.</p>
+          <p className="text-sm">© {new Date().getFullYear()} Spouse Interview. All rights reserved.</p>
         </div>
       </footer>
     </div>

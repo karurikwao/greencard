@@ -448,7 +448,7 @@ function UsersTab() {
   useEffect(() => {
     if (selectedUser) {
       setUserMessage({
-        title: 'Message from InterviewReady support',
+        title: 'Message from Spouse Interview support',
         message: '',
         sendEmail: true,
       });
@@ -1023,8 +1023,8 @@ function PromoCodesTab() {
                     <Badge variant="outline">{code.discount_percent}% off</Badge>
                   </div>
                   <div className="space-y-1">
-                    <code className="text-sm text-slate-500 block">{`https://interviewready.com/?ref=${code.code}`}</code>
-                    <code className="text-sm text-slate-500 block">{`https://interviewready.com/ref/${code.code}`}</code>
+                    <code className="text-sm text-slate-500 block">{`https://www.SpouseInterview.com/?ref=${code.code}`}</code>
+                    <code className="text-sm text-slate-500 block">{`https://www.SpouseInterview.com/ref/${code.code}`}</code>
                   </div>
                 </div>
               ))}

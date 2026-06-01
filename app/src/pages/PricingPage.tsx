@@ -459,7 +459,7 @@ export function PricingPage({
           ) : (
             <div className="flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-rose-500" />
-              <span className="font-bold text-slate-800">InterviewReady</span>
+              <span className="font-bold text-slate-800">Spouse Interview</span>
             </div>
           )}
           
@@ -644,9 +644,9 @@ export function PricingPage({
       {/* Footer */}
       <footer className="bg-white border-t py-8">
         <div className="max-w-6xl mx-auto px-4 text-center text-sm text-slate-500">
-          <p>© {new Date().getFullYear()} InterviewReady. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Spouse Interview. All rights reserved.</p>
           <p className="mt-1">
-            Questions? Contact us at support@interviewready.app
+            Questions? Contact us at support@spouseinterview.com
           </p>
         </div>
       </footer>
