@@ -30,7 +30,7 @@ def _from_address() -> str:
     return (
         os.getenv('PLUNK_FROM_EMAIL')
         or os.getenv('EMAIL_FROM')
-        or 'InterviewReady <noreply@interviewready.app>'
+        or 'Spouse Interview <noreply@spouseinterview.com>'
     )
 
 
@@ -39,7 +39,7 @@ def _reply_address() -> Optional[str]:
 
 
 def _clean_subject(subject: str) -> str:
-    return ' '.join((subject or '').split())[:998] or 'InterviewReady notification'
+    return ' '.join((subject or '').split())[:998] or 'Spouse Interview notification'
 
 
 def _tag_data(tags: Optional[List[Dict[str, str]]]) -> Dict[str, object]:
@@ -143,7 +143,7 @@ def send_welcome_email(to_email: str, first_name: Optional[str] = None) -> Dict[
 
     html_body = f"""
     <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
-      <h1 style="font-size: 24px; margin-bottom: 12px;">Welcome to InterviewReady</h1>
+      <h1 style="font-size: 24px; margin-bottom: 12px;">Welcome to Spouse Interview</h1>
       <p>Hi {name},</p>
       <p>Your spouse green card interview prep account is ready. Your free trial is active, so you can start practicing questions, saving progress, and exploring premium tools.</p>
       <p>
@@ -156,12 +156,12 @@ def send_welcome_email(to_email: str, first_name: Optional[str] = None) -> Dict[
     """
     text_body = (
         f'Hi {first_name or "there"},\n\n'
-        'Your InterviewReady account is ready and your free trial is active.\n'
+        'Your Spouse Interview account is ready and your free trial is active.\n'
         f'Open your dashboard: {dashboard_url}\n'
     )
     return send_email(
         to_email,
-        'Welcome to InterviewReady',
+        'Welcome to Spouse Interview',
         html_body,
         text_body,
         tags=[{'name': 'category', 'value': 'welcome'}],
@@ -200,7 +200,7 @@ def send_purchase_confirmation_email(
     )
     return send_email(
         to_email,
-        'Your InterviewReady premium access is active',
+        'Your Spouse Interview premium access is active',
         html_body,
         text_body,
         tags=[{'name': 'category', 'value': 'purchase_confirmation'}],
@@ -213,7 +213,7 @@ def send_password_reset_message(to_email: str, reset_url: str) -> Dict[str, obje
     html_body = f"""
     <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.6;">
       <h1 style="font-size: 24px; margin-bottom: 12px;">Reset your password</h1>
-      <p>Use the secure link below to reset your InterviewReady password.</p>
+      <p>Use the secure link below to reset your Spouse Interview password.</p>
       <p>
         <a href="{escaped_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 12px 18px; border-radius: 6px; text-decoration: none;">
           Reset password
@@ -225,7 +225,7 @@ def send_password_reset_message(to_email: str, reset_url: str) -> Dict[str, obje
     text_body = f'Click the link to reset your password: {reset_url}\nThis link expires in 1 hour.'
     return send_email(
         to_email,
-        'Reset your InterviewReady password',
+        'Reset your Spouse Interview password',
         html_body,
         text_body,
         tags=[{'name': 'category', 'value': 'password_reset'}],
@@ -390,7 +390,7 @@ def send_dashboard_message_email(
     )
     return send_email(
         to_email,
-        title or 'New InterviewReady dashboard message',
+        title or 'New Spouse Interview dashboard message',
         html_body,
         text_body,
         tags=[{'name': 'category', 'value': 'dashboard_message'}],

@@ -279,7 +279,17 @@ function usePage() {
     else if (newPage === 'account') path = '/account';
     else path = `/${newPage}`;
     window.history.pushState({}, '', path);
-    window.scrollTo({ top: 0, behavior: newPage === 'pricing' ? 'auto' : 'smooth' });
+    if (newPage === 'pricing') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      });
+      window.setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }, 75);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   return { page, navigate, setPage, questionSlug, inviteCode, topicSlug, situationSlug, clusterSlug, supportingSlug };

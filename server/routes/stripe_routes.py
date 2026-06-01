@@ -27,22 +27,22 @@ PLAN_PRICES = {
 }
 
 PLAN_LABELS = {
-    'monthly': 'InterviewReady Premium Monthly - Robin + PDF Guides',
-    'lifetime': 'InterviewReady Lifetime Access - Robin + PDF Guides',
-    'interviewPass': 'InterviewReady 90-Day Interview Pass - Robin + PDF Guides',
+    'monthly': 'Spouse Interview Premium Monthly - Robin + PDF Guides',
+    'lifetime': 'Spouse Interview Lifetime Access - Robin + PDF Guides',
+    'interviewPass': 'Spouse Interview 90-Day Interview Pass - Robin + PDF Guides',
 }
 
 PLAN_CHECKOUT_DETAILS = {
     'monthly': {
-        'summary': 'Monthly premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
+        'summary': 'Monthly premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and 20 daily Robin chats.',
         'terms': '$19.99 today, then $19.99 each month until canceled. Cancel anytime from your dashboard; access continues through the paid billing period.',
     },
     'lifetime': {
-        'summary': 'One-time lifetime premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
+        'summary': 'One-time lifetime premium access with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and 30 daily Robin chats.',
         'terms': '$79.99 one-time payment for lifetime access. No renewal is created.',
     },
     'interviewPass': {
-        'summary': 'One-time 90-day premium pass with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and Robin chat sessions.',
+        'summary': 'One-time 90-day premium pass with 1,200+ USCIS-style practice questions, premium PDF guides, partner sync, and 20 daily Robin chats.',
         'terms': '$39.99 one-time payment for 90 days of premium access. No renewal is created.',
     },
 }
@@ -51,6 +51,14 @@ REFUND_POLICY_SUMMARY = (
     'Refund requests are reviewed under the refund policy. Unauthorized or unclear purchase claims '
     'are prioritized for manual review.'
 )
+
+
+def _checkout_payment_method_types():
+    """Default Checkout to card-only so Stripe does not vary methods by browser."""
+    raw = os.getenv('STRIPE_CHECKOUT_PAYMENT_METHOD_TYPES', 'card').strip()
+    if not raw or raw.lower() in ('auto', 'automatic', 'dashboard', 'dynamic'):
+        return None
+    return [method.strip() for method in raw.split(',') if method.strip()]
 
 
 def _is_stripe_subscription_id(value):
@@ -142,7 +150,7 @@ def _checkout_metadata(user_id, plan_type, extra=None):
         'purchase_terms': details['terms'],
         'refund_policy': REFUND_POLICY_SUMMARY,
         'terms_version': '2026-05-25',
-        'app_source': 'interview_ready',
+        'app_source': 'spouse_interview',
     }
     if extra:
         metadata.update(extra)
@@ -154,7 +162,7 @@ def _checkout_custom_text(plan_type):
     return {
         'submit': {
             'message': (
-                f"You are unlocking InterviewReady premium: {details['summary']} "
+                f"You are unlocking Spouse Interview premium: {details['summary']} "
                 f"{details['terms']} {REFUND_POLICY_SUMMARY}"
             ),
         },
@@ -184,7 +192,7 @@ def _sync_checkout_product_copy(price_id, plan_type):
             name=PLAN_LABELS[plan_type],
             description=_checkout_product_description(plan_type),
             metadata={
-                'app_source': 'interview_ready',
+                'app_source': 'spouse_interview',
                 'plan_type': plan_type,
                 'purchase_summary': PLAN_CHECKOUT_DETAILS[plan_type]['summary'],
                 'refund_policy': REFUND_POLICY_SUMMARY,
@@ -222,7 +230,7 @@ def _get_or_create_test_price(plan_type):
         name=PLAN_LABELS[plan_type],
         description=_checkout_product_description(plan_type),
         metadata={
-            'app_source': 'interview_ready',
+            'app_source': 'spouse_interview',
             'plan_type': plan_type,
             'environment': 'test',
         }
@@ -234,7 +242,7 @@ def _get_or_create_test_price(plan_type):
         'product': product.id,
         'lookup_key': lookup_key,
         'metadata': {
-            'app_source': 'interview_ready',
+            'app_source': 'spouse_interview',
             'plan_type': plan_type,
             'environment': 'test',
         }
@@ -328,7 +336,7 @@ def create_checkout_session():
                 email=user['email'],
                 metadata={
                     'user_id': user['id'],
-                    'app_source': 'interview_ready',
+                    'app_source': 'spouse_interview',
                     'promo_code': promo_validation.get('code', '') if promo_validation else '',
                 }
             )
@@ -363,12 +371,15 @@ def create_checkout_session():
         'metadata': _checkout_metadata(user['id'], plan_type),
         'custom_text': _checkout_custom_text(plan_type),
     }
+    payment_method_types = _checkout_payment_method_types()
+    if payment_method_types:
+        session_params['payment_method_types'] = payment_method_types
 
     if os.getenv('STRIPE_REQUIRE_TOS_CONSENT', '').lower() in ('1', 'true', 'yes'):
         session_params['consent_collection'] = {'terms_of_service': 'required'}
         session_params['custom_text']['terms_of_service_acceptance'] = {
             'message': (
-                'I agree to the Terms of Service and Refund Policy for this InterviewReady purchase.'
+                'I agree to the Terms of Service and Refund Policy for this Spouse Interview purchase.'
             )
         }
 
@@ -451,7 +462,7 @@ def create_retention_checkout_session():
         try:
             customer = stripe.Customer.create(
                 email=user['email'],
-                metadata={'user_id': user['id'], 'app_source': 'interview_ready'}
+                metadata={'user_id': user['id'], 'app_source': 'spouse_interview'}
             )
             customer_id = customer.id
             db.execute(
@@ -489,7 +500,7 @@ def create_retention_checkout_session():
                 'name': offer.get('label') or '90-Day Interview Pass Retention Offer',
                 'description': 'Lower-cost 90-day premium access for users considering cancellation or refund.',
                 'metadata': {
-                    'app_source': 'interview_ready',
+                    'app_source': 'spouse_interview',
                     'plan_type': 'interviewPass',
                     'retention_offer': 'true',
                 },
@@ -501,31 +512,36 @@ def create_retention_checkout_session():
     if configured_retention_price:
         line_item = {'price': configured_retention_price, 'quantity': 1}
 
+    retention_session_params = {
+        'customer': customer_id,
+        'mode': 'payment',
+        'success_url': success_url,
+        'cancel_url': cancel_url,
+        'line_items': [line_item],
+        'client_reference_id': user['id'],
+        'metadata': metadata,
+        'custom_text': {
+            'submit': {
+                'message': (
+                    f"This is a one-time ${offer['amount']:.2f} payment for 90 days of premium access. "
+                    "It does not create a monthly renewal. Refund requests remain subject to the refund policy."
+                ),
+            },
+            'after_submit': {
+                'message': 'A receipt and purchase confirmation will be sent by email after payment is complete.',
+            },
+        },
+        'payment_intent_data': {
+            'description': f"{offer.get('label')} - one-time ${offer['amount']:.2f} for 90 days",
+            'metadata': metadata,
+        },
+    }
+    payment_method_types = _checkout_payment_method_types()
+    if payment_method_types:
+        retention_session_params['payment_method_types'] = payment_method_types
+
     try:
-        session = stripe.checkout.Session.create(
-            customer=customer_id,
-            mode='payment',
-            success_url=success_url,
-            cancel_url=cancel_url,
-            line_items=[line_item],
-            client_reference_id=user['id'],
-            metadata=metadata,
-            custom_text={
-                'submit': {
-                    'message': (
-                        f"This is a one-time ${offer['amount']:.2f} payment for 90 days of premium access. "
-                        "It does not create a monthly renewal. Refund requests remain subject to the refund policy."
-                    ),
-                },
-                'after_submit': {
-                    'message': 'A receipt and purchase confirmation will be sent by email after payment is complete.',
-                },
-            },
-            payment_intent_data={
-                'description': f"{offer.get('label')} - one-time ${offer['amount']:.2f} for 90 days",
-                'metadata': metadata,
-            },
-        )
+        session = stripe.checkout.Session.create(**retention_session_params)
         return jsonify({
             'checkoutUrl': session.url,
             'sessionId': session.id,
