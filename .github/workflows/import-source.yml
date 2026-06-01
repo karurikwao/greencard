@@ -21,8 +21,8 @@ jobs:
       - name: Import source archive
         run: |
           set -euo pipefail
-          # Codex source bundle: 2026-06-01 admin support links, Robin memory panel, pricing spinner, entitlement refresh
-          curl -fsSL "https://litter.catbox.moe/yl34bo.gz" -o /tmp/source.tar.gz
+          # Codex source bundle: 2026-06-01 pricing scroll reset and card-only Stripe Checkout
+          curl -fsSL "https://litter.catbox.moe/rwmnm8.gz" -o /tmp/source.tar.gz
           find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
           tar -xzf /tmp/source.tar.gz --strip-components=1 -C .
           git status --short
