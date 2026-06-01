@@ -37,7 +37,9 @@ jobs:
         working-directory: app
         env:
           VITE_API_URL: ""
-        run: npm run build
+        run: |
+          # Codex trigger: 2026-06-01 admin support links, pricing spinner, memory panel
+          npm run build
 
       - name: Package runtime bundle
         run: |
