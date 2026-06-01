@@ -3,6 +3,10 @@ name: Build Runtime Bundle
 on:
   push:
     paths:
+      - app/**
+      - pdfs/**
+      - server/**
+      - MASTER_SETUP_POSTGRES_v5.sql
       - .github/workflows/build-runtime-bundle.yml
   workflow_dispatch:
 
