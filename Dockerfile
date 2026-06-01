@@ -1,11 +1,13 @@
-# Redeploy marker: 2026-05-31 support AI conversation and Robin daily limits
+# Redeploy marker: 2026-06-01 Google auth client build arg
 FROM node:24-alpine AS frontend
 
 WORKDIR /app
 COPY app/package*.json ./
 RUN npm ci
 COPY app/ ./
+ARG VITE_GOOGLE_CLIENT_ID=
 ENV VITE_API_URL=
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 RUN npm run build
 
 FROM python:3.12-slim
