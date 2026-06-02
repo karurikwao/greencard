@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from flask import Blueprint, request, jsonify
+import requests as http_requests
 from auth import require_auth, require_admin, optional_auth
 import db
 from admin_settings import get_admin_setting, save_admin_setting, saved_ai_runtime_config, saved_welcome_message_config
@@ -27,6 +28,8 @@ from routes.ai_routes import (
     _build_support_messages,
     _call_provider_with_fallback,
     _default_model_for_provider,
+    _normalize_provider_id,
+    _openai_compatible_provider,
     _normalize_support_response,
     _select_default_provider,
     _support_fallback_response,
@@ -42,6 +45,122 @@ def _mask_secret(value):
     if len(value) <= 8:
         return '••••'
     return f"{value[:4]}••••{value[-4:]}"
+
+
+AI_ROLE_DEFAULTS = {
+    'robin': {
+        'label': 'Robin Interview Coach',
+        'routingPolicy': 'complexity',
+        'enabledModelRefs': [],
+        'fallbackModelRefs': [],
+        'defaultModelRef': '',
+    },
+    'support': {
+        'label': 'User Support Assistant',
+        'routingPolicy': 'support_triage',
+        'enabledModelRefs': [],
+        'fallbackModelRefs': [],
+        'defaultModelRef': '',
+    },
+    'admin_support': {
+        'label': 'Admin Support Drafts',
+        'routingPolicy': 'admin_triage',
+        'enabledModelRefs': [],
+        'fallbackModelRefs': [],
+        'defaultModelRef': '',
+    },
+}
+
+
+def _sanitize_string_list(value, max_items=120):
+    if isinstance(value, str):
+        value = [item.strip() for item in value.split(',') if item.strip()]
+    if not isinstance(value, list):
+        return []
+    cleaned = []
+    for item in value:
+        text = str(item or '').strip()
+        if text and text not in cleaned:
+            cleaned.append(text[:220])
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def _sanitize_model_catalog(value):
+    if not isinstance(value, dict):
+        return {}
+    catalog = {}
+    for provider_id, models in value.items():
+        provider_key = _normalize_provider_id(provider_id)
+        if provider_key:
+            catalog[provider_key] = _sanitize_string_list(models, 200)
+    return catalog
+
+
+def _public_role_assignments(config=None):
+    config = config if isinstance(config, dict) else saved_ai_runtime_config()
+    raw_roles = config.get('roleAssignments') if isinstance(config.get('roleAssignments'), dict) else {}
+    roles = {}
+    for role_id, defaults in AI_ROLE_DEFAULTS.items():
+        role_config = raw_roles.get(role_id) if isinstance(raw_roles, dict) else {}
+        role_config = role_config if isinstance(role_config, dict) else {}
+        enabled = _sanitize_string_list(role_config.get('enabledModelRefs'))
+        default_ref = str(role_config.get('defaultModelRef') or '').strip()
+        if not default_ref:
+            provider = str(role_config.get('defaultProvider') or '').strip()
+            model = str(role_config.get('defaultModel') or '').strip()
+            if provider and model:
+                default_ref = f'{provider}::{model}'
+        roles[role_id] = {
+            **defaults,
+            'label': str(role_config.get('label') or defaults['label']).strip()[:80],
+            'routingPolicy': str(role_config.get('routingPolicy') or defaults['routingPolicy']).strip()[:80],
+            'defaultModelRef': default_ref[:260],
+            'enabledModelRefs': enabled,
+            'fallbackModelRefs': _sanitize_string_list(role_config.get('fallbackModelRefs')) or [
+                item for item in enabled if item != default_ref
+            ],
+        }
+    return roles
+
+
+def _public_lawyer_directory_config(config=None):
+    raw = config if isinstance(config, dict) else get_admin_setting('lawyer_directory_config', {}) or {}
+    lawyers = raw.get('lawyers') if isinstance(raw.get('lawyers'), list) else []
+    public_lawyers = []
+    for index, lawyer in enumerate(lawyers[:80]):
+        if not isinstance(lawyer, dict):
+            continue
+        name = str(lawyer.get('name') or '').strip()
+        if not name:
+            continue
+        try:
+            priority = int(lawyer.get('priority') or index + 1)
+        except Exception:
+            priority = index + 1
+        public_lawyers.append({
+            'id': str(lawyer.get('id') or f'lawyer-{index + 1}')[:80],
+            'active': bool(lawyer.get('active', True)),
+            'name': name[:120],
+            'firm': str(lawyer.get('firm') or '')[:160],
+            'states': str(lawyer.get('states') or '')[:180],
+            'practiceAreas': str(lawyer.get('practiceAreas') or '')[:240],
+            'description': str(lawyer.get('description') or '')[:700],
+            'website': str(lawyer.get('website') or '')[:400],
+            'affiliateUrl': str(lawyer.get('affiliateUrl') or '')[:500],
+            'imageUrl': str(lawyer.get('imageUrl') or '')[:500],
+            'email': str(lawyer.get('email') or '')[:180],
+            'phone': str(lawyer.get('phone') or '')[:80],
+            'priority': priority,
+        })
+    public_lawyers.sort(key=lambda item: (not item.get('active'), item.get('priority') or 999))
+    return {
+        'enabled': bool(raw.get('enabled', False)),
+        'introText': str(raw.get('introText') or 'Robin can share admin-approved immigration lawyer resources when a user asks for attorney help.')[:500],
+        'affiliateDisclosure': str(raw.get('affiliateDisclosure') or 'Some lawyer links may be affiliate links. Spouse Interview is not a law firm and does not provide legal advice.')[:500],
+        'lawyers': public_lawyers,
+    }
 
 
 def _public_ai_runtime_config(config=None):
@@ -62,6 +181,8 @@ def _public_ai_runtime_config(config=None):
         'defaultModel': config.get('defaultModel') or config.get('default_model') or '',
         'fallbackProviders': config.get('fallbackProviders') or config.get('fallback_providers') or [],
         'providers': public_providers,
+        'modelCatalog': _sanitize_model_catalog(config.get('modelCatalog')),
+        'roleAssignments': _public_role_assignments(config),
     }
 
 
@@ -892,6 +1013,29 @@ def admin_system_status():
 
     saved_ai = saved_ai_runtime_config()
     saved_providers = saved_ai.get('providers') if isinstance(saved_ai.get('providers'), dict) else {}
+    existing_provider_ids = {provider.get('provider') for provider in providers}
+    reserved_provider_ids = {'openai', 'anthropic', 'deepseek', 'nvidia', 'fallback', 'unified'}
+    for provider_id, saved_provider in (saved_providers.items() if isinstance(saved_providers, dict) else []):
+        provider_key = normalize_provider_id(provider_id)
+        if not provider_key or provider_key in existing_provider_ids or provider_key in reserved_provider_ids:
+            continue
+        if not isinstance(saved_provider, dict) or not saved_provider.get('openAICompatible', True):
+            continue
+        saved_models = _sanitize_model_catalog(saved_ai.get('modelCatalog')).get(provider_key, [])
+        providers.append({
+            'provider': provider_key,
+            'label': str(saved_provider.get('label') or provider_key.replace('_', ' ').title()),
+            'configured': bool(saved_provider.get('apiKey') and saved_provider.get('baseUrl')),
+            'defaultModel': saved_provider.get('defaultModel') or 'auto',
+            'modelCount': len(saved_models) or 1,
+            'apiKeyConfigured': bool(saved_provider.get('apiKey')),
+            'baseUrlConfigured': bool(saved_provider.get('baseUrl')),
+            'baseUrl': saved_provider.get('baseUrl') or '',
+            'openAICompatible': True,
+            'managedInAdmin': True,
+            'configurationHint': 'OpenAI-compatible provider managed from Admin settings.',
+        })
+
     for provider in providers:
         saved_provider = saved_providers.get(provider['provider']) if isinstance(saved_providers, dict) else None
         if not isinstance(saved_provider, dict):
@@ -989,9 +1133,19 @@ def admin_ai_settings_endpoint():
         api_key = provider_config.get('apiKey')
         if not api_key and (provider_config.get('keepExistingApiKey') or provider_config.get('apiKeyConfigured')):
             api_key = previous.get('apiKey') or previous.get('api_key')
+        openai_compatible = provider_config.get('openAICompatible')
+        if openai_compatible is None:
+            openai_compatible = provider_config.get('open_ai_compatible')
+        if openai_compatible is None:
+            openai_compatible = previous.get('openAICompatible')
+        if openai_compatible is None:
+            openai_compatible = provider_key not in {'openai', 'anthropic', 'deepseek', 'nvidia'}
         sanitized = {
             'enabled': bool(provider_config.get('enabled', True)),
             'defaultModel': str(provider_config.get('defaultModel') or provider_config.get('default_model') or '').strip(),
+            'label': str(provider_config.get('label') or previous.get('label') or provider_key.replace('_', ' ').title()).strip()[:120],
+            'openAICompatible': bool(openai_compatible),
+            'custom': bool(provider_config.get('custom') or previous.get('custom') or provider_key not in {'openai', 'anthropic', 'deepseek', 'nvidia', 'unified'}),
         }
         base_url = str(provider_config.get('baseUrl') or provider_config.get('base_url') or '').strip()
         if base_url:
@@ -1006,13 +1160,131 @@ def admin_ai_settings_endpoint():
     if not isinstance(fallback, list):
         fallback = []
 
+    role_assignments = _public_role_assignments({
+        'roleAssignments': data.get('roleAssignments') if isinstance(data.get('roleAssignments'), dict) else {},
+    })
+
     saved = save_admin_setting('ai_runtime_config', {
         'defaultProvider': str(data.get('defaultProvider') or data.get('default_provider') or '').strip().lower(),
         'defaultModel': str(data.get('defaultModel') or data.get('default_model') or '').strip(),
         'fallbackProviders': [str(item).strip().lower() for item in fallback if str(item).strip()],
         'providers': sanitized_providers,
+        'modelCatalog': _sanitize_model_catalog(data.get('modelCatalog')),
+        'roleAssignments': role_assignments,
     }, user.get('id'))
     return jsonify({'success': True, 'settings': _public_ai_runtime_config(saved)})
+
+
+def _saved_provider_secret(provider_id, key):
+    config = saved_ai_runtime_config()
+    providers = config.get('providers') if isinstance(config.get('providers'), dict) else {}
+    provider_config = providers.get(provider_id) if isinstance(providers, dict) else {}
+    if isinstance(provider_config, dict):
+        value = provider_config.get(key) or provider_config.get(key.replace('K', '_k').lower())
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ''
+
+
+def _provider_model_endpoint(provider_id, incoming):
+    incoming = incoming if isinstance(incoming, dict) else {}
+    compatible = _openai_compatible_provider(provider_id)
+    base_url = str(incoming.get('baseUrl') or incoming.get('base_url') or '').strip()
+    api_key = str(incoming.get('apiKey') or incoming.get('api_key') or '').strip()
+    default_model = str(incoming.get('defaultModel') or incoming.get('default_model') or '').strip()
+
+    if not base_url and compatible:
+        base_url = compatible.get('base_url') or ''
+    if not api_key and compatible:
+        api_key = compatible.get('api_key') or ''
+    if not default_model and compatible:
+        default_model = compatible.get('default_model') or ''
+
+    if not api_key:
+        api_key = _saved_provider_secret(provider_id, 'apiKey')
+    if not base_url:
+        base_url = _saved_provider_secret(provider_id, 'baseUrl')
+    if not default_model:
+        default_model = _saved_provider_secret(provider_id, 'defaultModel') or _default_model_for_provider(provider_id)
+
+    if provider_id == 'openai':
+        return 'https://api.openai.com/v1', api_key or os.getenv('OPENAI_API_KEY', ''), default_model
+    if provider_id == 'deepseek':
+        return 'https://api.deepseek.com/v1', api_key or os.getenv('DEEPSEEK_API_KEY', ''), default_model
+    if provider_id == 'nvidia':
+        return 'https://integrate.api.nvidia.com/v1', api_key or os.getenv('NVIDIA_API_KEY', ''), default_model
+    if provider_id == 'anthropic':
+        return '', api_key or os.getenv('ANTHROPIC_API_KEY', ''), default_model
+    return base_url, api_key, default_model
+
+
+def _normalize_model_list(payload, default_model=''):
+    raw_models = payload.get('data') if isinstance(payload, dict) else payload
+    models = []
+    if isinstance(raw_models, list):
+        for item in raw_models:
+            model_id = item.get('id') if isinstance(item, dict) else item
+            model_id = str(model_id or '').strip()
+            if model_id and model_id not in models:
+                models.append(model_id[:220])
+    if default_model and default_model not in models:
+        models.insert(0, default_model)
+    return models[:200]
+
+
+@api_bp.route('/admin/ai-provider-models', methods=['POST'])
+@require_admin
+def admin_ai_provider_models_endpoint():
+    data = request.get_json() or {}
+    provider_id = _normalize_provider_id(data.get('provider') or data.get('providerId'))
+    if not provider_id:
+        return jsonify({'error': 'Provider is required.'}), 400
+
+    incoming = data.get('providerConfig') if isinstance(data.get('providerConfig'), dict) else {}
+    base_url, api_key, default_model = _provider_model_endpoint(provider_id, incoming)
+
+    if provider_id == 'anthropic':
+        models = _sanitize_string_list([
+            default_model,
+            'claude-3-5-haiku-latest',
+            'claude-3-5-sonnet-latest',
+            'claude-3-opus-latest',
+        ])
+        return jsonify({'success': True, 'provider': provider_id, 'models': models})
+
+    if not base_url or not api_key:
+        return jsonify({'error': 'Provider key and base URL are required before models can be refreshed.'}), 400
+
+    try:
+        response = http_requests.get(
+            f'{base_url.rstrip("/")}/models',
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            timeout=30,
+        )
+        response.raise_for_status()
+        models = _normalize_model_list(response.json(), default_model)
+    except Exception as exc:
+        if default_model:
+            models = [default_model]
+        else:
+            return jsonify({'error': f'Unable to load models: {str(exc)[:180]}'}), 502
+
+    return jsonify({'success': True, 'provider': provider_id, 'models': models})
+
+
+@api_bp.route('/admin/lawyer-directory', methods=['GET', 'POST'])
+@require_admin
+def admin_lawyer_directory_endpoint():
+    user = request.current_user
+    if request.method == 'GET':
+        return jsonify({'success': True, 'settings': _public_lawyer_directory_config()})
+
+    saved = save_admin_setting(
+        'lawyer_directory_config',
+        _public_lawyer_directory_config(request.get_json() or {}),
+        user.get('id'),
+    )
+    return jsonify({'success': True, 'settings': _public_lawyer_directory_config(saved)})
 
 
 @api_bp.route('/admin/welcome-messages', methods=['GET', 'POST'])

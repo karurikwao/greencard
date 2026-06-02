@@ -55,11 +55,17 @@ import { AdminRefundDashboard } from '@/components/refunds';
 import { PAID_PLANS } from '@/lib/plans';
 import {
   fetchAdminAISettings,
+  fetchAdminLawyerDirectory,
   fetchAdminSystemStatus,
   fetchAdminWelcomeMessages,
+  refreshAdminAIProviderModels,
   saveAdminAISettings,
+  saveAdminLawyerDirectory,
   saveAdminWelcomeMessages,
   type AdminAISettings,
+  type AdminAIRoleId,
+  type AdminLawyerDirectoryEntry,
+  type AdminLawyerDirectorySettings,
   type AdminProviderStatus,
   type AdminSystemStatus,
   type AdminWelcomeMessageSettings,
@@ -1142,6 +1148,63 @@ function buildProviderEnvLines(provider: AdminProviderStatus) {
   return lines;
 }
 
+const AI_ROLE_OPTIONS: Array<{ id: AdminAIRoleId; title: string; help: string }> = [
+  {
+    id: 'robin',
+    title: 'Robin Interview Coach',
+    help: 'USCIS marriage interview practice, preparation, and attorney-resource routing only.',
+  },
+  {
+    id: 'support',
+    title: 'User Support Assistant',
+    help: 'Billing, refunds, account access, app support, and ticket triage.',
+  },
+  {
+    id: 'admin_support',
+    title: 'Admin Support Drafts',
+    help: 'Admin-facing ticket summaries, reply drafts, urgency, and refund review notes.',
+  },
+];
+
+const DEFAULT_ROLE_SETTINGS = AI_ROLE_OPTIONS.reduce((acc, role) => {
+  acc[role.id] = {
+    label: role.title,
+    routingPolicy: role.id === 'robin' ? 'complexity' : role.id === 'support' ? 'support_triage' : 'admin_triage',
+    defaultModelRef: '',
+    enabledModelRefs: [],
+    fallbackModelRefs: [],
+  };
+  return acc;
+}, {} as NonNullable<AdminAISettings['roleAssignments']>);
+
+function modelRef(provider: string, model: string) {
+  return `${provider}::${model}`;
+}
+
+function formatModelRef(ref: string) {
+  const [provider, ...modelParts] = ref.split('::');
+  const model = modelParts.join('::') || ref;
+  return provider && modelParts.length ? `${provider} / ${model}` : ref;
+}
+
+function createBlankLawyer(): AdminLawyerDirectoryEntry {
+  return {
+    id: `lawyer-${Date.now()}`,
+    active: true,
+    name: '',
+    firm: '',
+    states: '',
+    practiceAreas: 'Immigration, marriage green card interviews',
+    description: '',
+    website: '',
+    affiliateUrl: '',
+    imageUrl: '',
+    email: '',
+    phone: '',
+    priority: 10,
+  };
+}
+
 // AI Config Tab
 function AIConfigTab() {
   const { status, isLoading, error, refresh } = useAdminSystemStatus();
@@ -1150,8 +1213,10 @@ function AIConfigTab() {
   const [copyNotice, setCopyNotice] = useState('');
   const [aiSettings, setAiSettings] = useState<AdminAISettings | null>(null);
   const [welcomeSettings, setWelcomeSettings] = useState<AdminWelcomeMessageSettings | null>(null);
+  const [lawyerSettings, setLawyerSettings] = useState<AdminLawyerDirectorySettings | null>(null);
   const [settingsNotice, setSettingsNotice] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null);
 
   const envLines = configureProvider ? buildProviderEnvLines(configureProvider) : [];
   const openCoolifyEnv = () => window.open(COOLIFY_ENVIRONMENT_URL, '_blank', 'noopener,noreferrer');
@@ -1164,12 +1229,14 @@ function AIConfigTab() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.allSettled([fetchAdminAISettings(), fetchAdminWelcomeMessages()]).then((results) => {
+    Promise.allSettled([fetchAdminAISettings(), fetchAdminWelcomeMessages(), fetchAdminLawyerDirectory()]).then((results) => {
       if (!mounted) return;
       const aiResult = results[0];
       const welcomeResult = results[1];
+      const lawyerResult = results[2];
       if (aiResult.status === 'fulfilled') setAiSettings(aiResult.value);
       if (welcomeResult.status === 'fulfilled') setWelcomeSettings(welcomeResult.value);
+      if (lawyerResult.status === 'fulfilled') setLawyerSettings(lawyerResult.value);
     });
     return () => {
       mounted = false;
@@ -1188,6 +1255,8 @@ function AIConfigTab() {
         defaultModel: status?.ai.defaultModel || 'auto',
         fallbackProviders: ['unified', 'nvidia', 'deepseek', 'anthropic', 'openai'],
         providers: {},
+        modelCatalog: {},
+        roleAssignments: DEFAULT_ROLE_SETTINGS,
       };
       return {
         ...current,
@@ -1202,6 +1271,130 @@ function AIConfigTab() {
     });
   };
 
+  const editableProviders: AdminProviderStatus[] = (() => {
+    const baseProviders = [...(status?.ai.providers || [])];
+    const known = new Set(baseProviders.map(provider => provider.provider));
+    Object.entries(aiSettings?.providers || {}).forEach(([providerId, providerSetting]) => {
+      if (known.has(providerId)) return;
+      baseProviders.push({
+        provider: providerId,
+        label: providerSetting.label || providerId.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+        configured: Boolean(providerSetting.apiKeyConfigured || providerSetting.apiKey) && Boolean(providerSetting.baseUrl),
+        defaultModel: providerSetting.defaultModel || 'auto',
+        modelCount: aiSettings?.modelCatalog?.[providerId]?.length || 1,
+        apiKeyConfigured: Boolean(providerSetting.apiKeyConfigured || providerSetting.apiKey),
+        baseUrlConfigured: Boolean(providerSetting.baseUrl),
+        baseUrl: providerSetting.baseUrl,
+        openAICompatible: true,
+        managedInAdmin: true,
+        configurationHint: 'OpenAI-compatible provider managed from Admin settings.',
+      });
+    });
+    return baseProviders;
+  })();
+
+  const availableModelRefs = editableProviders.flatMap(provider => {
+    const providerSetting = aiSettings?.providers?.[provider.provider] || {};
+    const catalogModels = aiSettings?.modelCatalog?.[provider.provider] || [];
+    const models = Array.from(new Set([
+      providerSetting.defaultModel,
+      provider.defaultModel,
+      ...catalogModels,
+    ].filter(Boolean) as string[]));
+    return models.map(model => modelRef(provider.provider, model));
+  });
+
+  const updateRoleAssignment = (roleId: AdminAIRoleId, patch: Partial<NonNullable<AdminAISettings['roleAssignments']>[AdminAIRoleId]>) => {
+    setAiSettings(prev => {
+      if (!prev) return prev;
+      const currentRoles = { ...DEFAULT_ROLE_SETTINGS, ...(prev.roleAssignments || {}) };
+      return {
+        ...prev,
+        roleAssignments: {
+          ...currentRoles,
+          [roleId]: {
+            ...currentRoles[roleId],
+            ...patch,
+          },
+        },
+      };
+    });
+  };
+
+  const toggleRoleModel = (roleId: AdminAIRoleId, ref: string, checked: boolean) => {
+    const currentRoles = { ...DEFAULT_ROLE_SETTINGS, ...(aiSettings?.roleAssignments || {}) };
+    const currentRole = currentRoles[roleId];
+    const enabled = new Set(currentRole.enabledModelRefs || []);
+    if (checked) enabled.add(ref);
+    else enabled.delete(ref);
+    const enabledModelRefs = Array.from(enabled);
+    updateRoleAssignment(roleId, {
+      enabledModelRefs,
+      fallbackModelRefs: enabledModelRefs.filter(item => item !== currentRole.defaultModelRef),
+      defaultModelRef: checked && !currentRole.defaultModelRef ? ref : currentRole.defaultModelRef,
+    });
+  };
+
+  const selectAllRoleModels = (roleId: AdminAIRoleId) => {
+    const currentRoles = { ...DEFAULT_ROLE_SETTINGS, ...(aiSettings?.roleAssignments || {}) };
+    const defaultModelRef = currentRoles[roleId].defaultModelRef || availableModelRefs[0] || '';
+    updateRoleAssignment(roleId, {
+      defaultModelRef,
+      enabledModelRefs: availableModelRefs,
+      fallbackModelRefs: availableModelRefs.filter(ref => ref !== defaultModelRef),
+    });
+  };
+
+  const clearRoleModels = (roleId: AdminAIRoleId) => {
+    updateRoleAssignment(roleId, {
+      defaultModelRef: '',
+      enabledModelRefs: [],
+      fallbackModelRefs: [],
+    });
+  };
+
+  const refreshProviderModels = async (provider: AdminProviderStatus) => {
+    if (!aiSettings) return;
+    setRefreshingProvider(provider.provider);
+    setSettingsNotice('');
+    try {
+      const models = await refreshAdminAIProviderModels(provider.provider, aiSettings.providers?.[provider.provider] || {});
+      setAiSettings(prev => prev ? {
+        ...prev,
+        modelCatalog: {
+          ...(prev.modelCatalog || {}),
+          [provider.provider]: models,
+        },
+      } : prev);
+      setSettingsNotice(`Loaded ${models.length} model${models.length === 1 ? '' : 's'} from ${provider.label}. Save settings to keep this list.`);
+    } catch (err) {
+      setSettingsNotice(err instanceof Error ? err.message : `Unable to refresh ${provider.label} models`);
+    } finally {
+      setRefreshingProvider(null);
+    }
+  };
+
+  const addCustomProvider = () => {
+    setAiSettings(prev => {
+      if (!prev) return prev;
+      const nextId = `custom_llm_${Date.now()}`;
+      return {
+        ...prev,
+        providers: {
+          ...prev.providers,
+          [nextId]: {
+            enabled: true,
+            label: 'Custom LLM API',
+            openAICompatible: true,
+            custom: true,
+            baseUrl: '',
+            defaultModel: 'auto',
+          },
+        },
+      };
+    });
+  };
+
   const saveAISettings = async () => {
     if (!aiSettings) return;
     setIsSavingSettings(true);
@@ -1209,7 +1402,7 @@ function AIConfigTab() {
     try {
       const saved = await saveAdminAISettings(aiSettings);
       setAiSettings(saved);
-      setSettingsNotice('AI routing settings saved. New Robin requests will use this configuration.');
+      setSettingsNotice('AI role routing settings saved. New Robin and support requests will use this configuration.');
       await refresh();
     } catch (err) {
       setSettingsNotice(err instanceof Error ? err.message : 'Unable to save AI settings');
@@ -1232,14 +1425,48 @@ function AIConfigTab() {
     }
   };
 
+  const updateLawyer = (index: number, patch: Partial<AdminLawyerDirectoryEntry>) => {
+    setLawyerSettings(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        lawyers: prev.lawyers.map((lawyer, lawyerIndex) => (
+          lawyerIndex === index ? { ...lawyer, ...patch } : lawyer
+        )),
+      };
+    });
+  };
+
+  const saveLawyerSettings = async () => {
+    if (!lawyerSettings) return;
+    setIsSavingSettings(true);
+    setSettingsNotice('');
+    try {
+      setLawyerSettings(await saveAdminLawyerDirectory(lawyerSettings));
+      setSettingsNotice('Affiliate lawyer directory saved. Robin can reference active entries when users ask for attorney help.');
+    } catch (err) {
+      setSettingsNotice(err instanceof Error ? err.message : 'Unable to save lawyer directory');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <StatusLoadState isLoading={isLoading} error={error} onRefresh={refresh} />
 
       <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white via-emerald-50/70 to-cyan-50/80 shadow-lg shadow-emerald-100/60">
         <CardHeader>
-          <CardTitle className="text-base">Editable LLM Routing</CardTitle>
-          <CardDescription>Set Robin's live provider, model, fallback order, and API keys without opening Coolify.</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Editable LLM Role Routing</CardTitle>
+              <CardDescription>Add custom LLM APIs, refresh models, and assign model pools to Robin or support.</CardDescription>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={addCustomProvider} disabled={!aiSettings}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add custom API
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {aiSettings && (
@@ -1252,7 +1479,7 @@ function AIConfigTab() {
                     onChange={(event) => setAiSettings(prev => prev ? { ...prev, defaultProvider: event.target.value } : prev)}
                     className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950"
                   >
-                    {(status?.ai.providers || []).map(provider => (
+                    {editableProviders.map(provider => (
                       <option key={provider.provider} value={provider.provider}>{provider.label}</option>
                     ))}
                   </select>
@@ -1279,21 +1506,33 @@ function AIConfigTab() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                {(status?.ai.providers || []).map(provider => {
+                {editableProviders.map(provider => {
                   const providerSetting = aiSettings.providers?.[provider.provider] || {};
                   return (
                     <div key={provider.provider} className="space-y-3 rounded-2xl border border-slate-200 bg-white/90 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h4 className="font-extrabold text-slate-950">{provider.label}</h4>
+                          <h4 className="font-extrabold text-slate-950">{providerSetting.label || provider.label}</h4>
                           <p className="text-xs font-semibold text-slate-600">{provider.openAICompatible ? 'OpenAI-compatible gateway' : 'Native provider'}</p>
                         </div>
                         <ConfigBadge configured={Boolean(provider.configured || providerSetting.apiKeyConfigured || providerSetting.apiKey)} />
                       </div>
+                      {providerSetting.custom && (
+                        <div className="space-y-2">
+                          <Label className="font-bold text-slate-900">Provider label</Label>
+                          <Input
+                            value={providerSetting.label || ''}
+                            onChange={(event) => updateAIProviderSetting(provider.provider, { label: event.target.value, openAICompatible: true, custom: true })}
+                            placeholder="Moonshot, OpenRouter, Together AI..."
+                            className="bg-white font-semibold text-slate-950"
+                          />
+                          <p className="text-xs font-semibold text-slate-500">Provider ID: {provider.provider}</p>
+                        </div>
+                      )}
                       {provider.openAICompatible && (
                         <Input
                           value={providerSetting.baseUrl ?? provider.baseUrl ?? ''}
-                          onChange={(event) => updateAIProviderSetting(provider.provider, { baseUrl: event.target.value })}
+                          onChange={(event) => updateAIProviderSetting(provider.provider, { baseUrl: event.target.value, openAICompatible: true })}
                           placeholder="Base URL ending in /v1"
                           className="bg-white font-semibold text-slate-950"
                         />
@@ -1314,9 +1553,131 @@ function AIConfigTab() {
                         placeholder="Default model"
                         className="bg-white font-semibold text-slate-950"
                       />
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => refreshProviderModels(provider)}
+                          disabled={refreshingProvider === provider.provider}
+                          className="font-bold"
+                        >
+                          <RefreshCw className={cn('mr-2 h-4 w-4', refreshingProvider === provider.provider && 'animate-spin')} />
+                          Refresh models
+                        </Button>
+                        <span className="text-xs font-semibold text-slate-600">
+                          {(aiSettings.modelCatalog?.[provider.provider]?.length || 0).toLocaleString()} loaded
+                        </span>
+                      </div>
+                      {Boolean(aiSettings.modelCatalog?.[provider.provider]?.length) && (
+                        <div className="max-h-28 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs font-semibold text-slate-700">
+                          {(aiSettings.modelCatalog?.[provider.provider] || []).slice(0, 12).map(model => (
+                            <div key={model} className="truncate">{model}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50/70 to-cyan-50/80 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-slate-950">Assign models by AI duty</h4>
+                    <p className="text-sm font-semibold text-slate-700">
+                      Robin, user support, and Admin support drafts can use different defaults and fallback pools.
+                    </p>
+                  </div>
+                  <Badge className="w-fit border-0 bg-indigo-100 text-indigo-800">
+                    {availableModelRefs.length} available models
+                  </Badge>
+                </div>
+
+                {availableModelRefs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-indigo-200 bg-white/80 px-4 py-5 text-sm font-semibold text-slate-700">
+                    Add a provider default model or refresh provider models to start assigning model pools.
+                  </div>
+                ) : (
+                  <div className="grid gap-3 xl:grid-cols-3">
+                    {AI_ROLE_OPTIONS.map(role => {
+                      const roleSettings = { ...DEFAULT_ROLE_SETTINGS[role.id], ...(aiSettings.roleAssignments?.[role.id] || {}) };
+                      const selectedRefs = new Set(roleSettings.enabledModelRefs || []);
+                      return (
+                        <div key={role.id} className="space-y-3 rounded-xl border border-indigo-100 bg-white/95 p-3 shadow-sm">
+                          <div>
+                            <h5 className="font-extrabold text-slate-950">{role.title}</h5>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{role.help}</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="font-bold text-slate-900">Default model</Label>
+                            <select
+                              value={roleSettings.defaultModelRef || ''}
+                              onChange={(event) => {
+                                const nextRef = event.target.value;
+                                const enabled = Array.from(new Set([nextRef, ...(roleSettings.enabledModelRefs || [])].filter(Boolean)));
+                                updateRoleAssignment(role.id, {
+                                  defaultModelRef: nextRef,
+                                  enabledModelRefs: enabled,
+                                  fallbackModelRefs: enabled.filter(ref => ref !== nextRef),
+                                });
+                              }}
+                              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-950"
+                            >
+                              <option value="">Use global default</option>
+                              {availableModelRefs.map(ref => (
+                                <option key={ref} value={ref}>{formatModelRef(ref)}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="font-bold text-slate-900">Routing policy</Label>
+                            <select
+                              value={roleSettings.routingPolicy || 'fallback'}
+                              onChange={(event) => updateRoleAssignment(role.id, { routingPolicy: event.target.value })}
+                              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-xs font-bold text-slate-950"
+                            >
+                              <option value="complexity">Complexity based</option>
+                              <option value="support_triage">Support triage</option>
+                              <option value="admin_triage">Admin triage</option>
+                              <option value="fallback">Default then fallback</option>
+                              <option value="cost_first">Cost first</option>
+                              <option value="quality_first">Quality first</option>
+                            </select>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => selectAllRoleModels(role.id)}>
+                              Select all
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => clearRoleModels(role.id)}>
+                              Deselect all
+                            </Button>
+                          </div>
+
+                          <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+                            {availableModelRefs.map(ref => (
+                              <label key={ref} className="flex items-start gap-2 rounded-lg bg-white px-2 py-2 text-xs font-bold text-slate-800 shadow-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRefs.has(ref)}
+                                  onChange={(event) => toggleRoleModel(role.id, ref, event.target.checked)}
+                                  className="mt-0.5 h-4 w-4 accent-indigo-700"
+                                />
+                                <span className="min-w-0 flex-1 break-all">{formatModelRef(ref)}</span>
+                                {roleSettings.defaultModelRef === ref && (
+                                  <Badge variant="secondary" className="shrink-0 bg-emerald-100 text-emerald-800">Default</Badge>
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1371,6 +1732,149 @@ function AIConfigTab() {
         </Card>
       )}
 
+      {lawyerSettings && (
+        <Card className="border-2 border-amber-200 bg-gradient-to-br from-white via-amber-50/70 to-emerald-50/70 shadow-lg shadow-amber-100/60">
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-base">Affiliate Lawyer Directory for Robin</CardTitle>
+                <CardDescription>
+                  Preload approved lawyer resources. Robin can show these links and images only when users ask for attorney help.
+                </CardDescription>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                <Switch checked={lawyerSettings.enabled} onCheckedChange={(checked) => setLawyerSettings(prev => prev ? { ...prev, enabled: checked } : prev)} />
+                Enabled
+              </label>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="font-bold text-slate-900">Robin intro instruction</Label>
+                <textarea
+                  value={lawyerSettings.introText}
+                  onChange={(event) => setLawyerSettings(prev => prev ? { ...prev, introText: event.target.value } : prev)}
+                  className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-bold text-slate-900">Affiliate/legal disclosure</Label>
+                <textarea
+                  value={lawyerSettings.affiliateDisclosure}
+                  onChange={(event) => setLawyerSettings(prev => prev ? { ...prev, affiliateDisclosure: event.target.value } : prev)}
+                  className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="font-extrabold text-slate-950">Lawyer entries</h4>
+                <p className="text-sm font-semibold text-slate-700">Active entries are available to Robin. Inactive entries stay saved but hidden from recommendations.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLawyerSettings(prev => prev ? { ...prev, lawyers: [...prev.lawyers, createBlankLawyer()] } : prev)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add lawyer
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {lawyerSettings.lawyers.length === 0 && (
+                <div className="rounded-xl border border-dashed border-amber-200 bg-white/80 px-4 py-6 text-center text-sm font-semibold text-slate-700">
+                  No lawyers added yet.
+                </div>
+              )}
+              {lawyerSettings.lawyers.map((lawyer, index) => (
+                <div key={lawyer.id || index} className="space-y-3 rounded-2xl border border-amber-100 bg-white/95 p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                      <Switch checked={lawyer.active} onCheckedChange={(checked) => updateLawyer(index, { active: checked })} />
+                      Active for Robin
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                      onClick={() => setLawyerSettings(prev => prev ? { ...prev, lawyers: prev.lawyers.filter((_, lawyerIndex) => lawyerIndex !== index) } : prev)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Remove
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label>Name</Label>
+                      <Input value={lawyer.name} onChange={(event) => updateLawyer(index, { name: event.target.value })} className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Firm</Label>
+                      <Input value={lawyer.firm} onChange={(event) => updateLawyer(index, { firm: event.target.value })} className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>States served</Label>
+                      <Input value={lawyer.states} onChange={(event) => updateLawyer(index, { states: event.target.value })} placeholder="CA, TX, NY, Online" className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Priority</Label>
+                      <Input type="number" value={lawyer.priority} onChange={(event) => updateLawyer(index, { priority: Number(event.target.value || 10) })} className="font-semibold text-slate-950" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Practice areas</Label>
+                      <Input value={lawyer.practiceAreas} onChange={(event) => updateLawyer(index, { practiceAreas: event.target.value })} className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Image URL</Label>
+                      <Input value={lawyer.imageUrl} onChange={(event) => updateLawyer(index, { imageUrl: event.target.value })} placeholder="https://..." className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Website</Label>
+                      <Input value={lawyer.website} onChange={(event) => updateLawyer(index, { website: event.target.value })} placeholder="https://..." className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Affiliate URL</Label>
+                      <Input value={lawyer.affiliateUrl} onChange={(event) => updateLawyer(index, { affiliateUrl: event.target.value })} placeholder="https://affiliate-link..." className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input value={lawyer.email} onChange={(event) => updateLawyer(index, { email: event.target.value })} className="font-semibold text-slate-950" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone</Label>
+                      <Input value={lawyer.phone} onChange={(event) => updateLawyer(index, { phone: event.target.value })} className="font-semibold text-slate-950" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <textarea
+                      value={lawyer.description}
+                      onChange={(event) => updateLawyer(index, { description: event.target.value })}
+                      className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-950"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={saveLawyerSettings} disabled={isSavingSettings} className="bg-gradient-to-r from-amber-600 to-emerald-700 text-white">
+                Save Lawyer Directory
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {settingsNotice && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
           {settingsNotice}
@@ -1392,7 +1896,7 @@ function AIConfigTab() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(status?.ai.providers || []).map((provider) => (
+            {editableProviders.map((provider) => (
               <div
                 key={provider.provider}
                 className={cn(
@@ -1462,7 +1966,7 @@ function AIConfigTab() {
               </div>
             ))}
 
-            {!isLoading && !status?.ai.providers.length && (
+            {!isLoading && !editableProviders.length && (
               <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500 md:col-span-2">
                 Provider status is unavailable.
               </div>

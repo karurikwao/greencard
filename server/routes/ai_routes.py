@@ -5,7 +5,7 @@ import requests as http_requests
 from flask import Blueprint, request, jsonify
 from auth import optional_auth, require_auth, require_admin
 import db
-from admin_settings import saved_ai_runtime_config
+from admin_settings import get_admin_setting, saved_ai_runtime_config
 from support_service import (
     get_user_support_context,
     has_refund_signal,
@@ -29,6 +29,168 @@ VALID_FEEDBACK_LABELS = {
     'review_gently',
 }
 
+AI_ROLE_IDS = {'robin', 'support', 'admin_support'}
+
+SUPPORT_SCOPE_KEYWORDS = (
+    'refund', 'billing', 'bill', 'payment', 'charge', 'charged', 'stripe',
+    'subscription', 'cancel my plan', 'cancel subscription', 'upgrade',
+    'login', 'log in', 'password', 'email change', 'account access',
+    'support ticket', 'admin', 'technical', 'bug', 'error', 'pdf download',
+    'download problem', 'app issue', 'not working',
+)
+
+
+def _model_ref(provider, model):
+    provider_id = _normalize_provider_id(provider)
+    model_id = str(model or '').strip()
+    if not provider_id or not model_id:
+        return ''
+    return f'{provider_id}::{model_id}'
+
+
+def _parse_model_ref(value):
+    text = str(value or '').strip()
+    if not text:
+        return '', ''
+    if '::' in text:
+        provider, model = text.split('::', 1)
+        return _normalize_provider_id(provider), model.strip()
+    return '', text
+
+
+def _role_assignment(role):
+    role_id = str(role or '').strip().lower()
+    if role_id not in AI_ROLE_IDS:
+        role_id = 'robin'
+    config = saved_ai_runtime_config()
+    roles = config.get('roleAssignments') if isinstance(config.get('roleAssignments'), dict) else {}
+    role_config = roles.get(role_id) if isinstance(roles, dict) else {}
+    return role_config if isinstance(role_config, dict) else {}
+
+
+def _append_candidate(candidates, seen, provider, model):
+    provider_id = _normalize_provider_id(provider)
+    model_id = str(model or '').strip()
+    if not provider_id:
+        return
+    if not model_id:
+        model_id = _default_model_for_provider(provider_id)
+    key = (provider_id, model_id)
+    if key not in seen:
+        seen.add(key)
+        candidates.append(key)
+
+
+def _looks_complex_for_robin(prompt_text):
+    text = str(prompt_text or '').lower()
+    complex_terms = (
+        'denied', 'denial', 'rfe', 'noid', 'waiver', 'criminal', 'arrest',
+        'overstay', 'deport', 'removal', 'fraud', 'misrepresentation',
+        'prior marriage', 'divorce', 'separate', 'separated', 'affidavit',
+        'i-130', 'i-485', 'i-751', 'joint sponsor', 'tax transcript',
+        'lawyer', 'attorney', 'legal',
+    )
+    return len(text) > 420 or text.count('?') >= 2 or any(term in text for term in complex_terms)
+
+
+def _role_model_refs(role_config, prompt_text=''):
+    default_ref = str(role_config.get('defaultModelRef') or '').strip()
+    fallback_refs = list(role_config.get('fallbackModelRefs') if isinstance(role_config.get('fallbackModelRefs'), list) else [])
+    enabled_refs = list(role_config.get('enabledModelRefs') if isinstance(role_config.get('enabledModelRefs'), list) else [])
+    ordered = []
+    for ref in [default_ref, *fallback_refs, *enabled_refs]:
+        ref = str(ref or '').strip()
+        if ref and ref not in ordered:
+            ordered.append(ref)
+
+    policy = str(role_config.get('routingPolicy') or '').strip().lower()
+    if policy == 'complexity' and _looks_complex_for_robin(prompt_text) and len(ordered) > 1:
+        first_fallback = next((ref for ref in fallback_refs if ref and ref != default_ref), None)
+        if first_fallback and first_fallback in ordered:
+            ordered = [first_fallback, *[ref for ref in ordered if ref != first_fallback]]
+    return ordered
+
+
+def _role_model_candidates(role, preferred_provider='', preferred_model='', prompt_text=''):
+    candidates = []
+    seen = set()
+    if preferred_provider:
+        _append_candidate(candidates, seen, preferred_provider, preferred_model)
+
+    role_config = _role_assignment(role)
+    for ref in _role_model_refs(role_config, prompt_text):
+        provider, model = _parse_model_ref(ref)
+        _append_candidate(candidates, seen, provider, model)
+
+    if not candidates:
+        configured_default = _select_default_provider()
+        _append_candidate(candidates, seen, configured_default, _default_model_for_provider(configured_default))
+    return candidates
+
+
+def _select_role_provider_model(role, data=None):
+    data = data if isinstance(data, dict) else {}
+    explicit_provider = data.get('provider')
+    explicit_model = data.get('modelId') or data.get('model')
+    prompt_text = data.get('question') or data.get('message') or data.get('subject') or ''
+    candidates = _role_model_candidates(role, explicit_provider, explicit_model, prompt_text)
+    if candidates:
+        return candidates[0]
+    provider = _select_default_provider()
+    return provider, _default_model_for_provider(provider)
+
+
+def _call_role_provider_with_fallback(role, preferred_provider, preferred_model, messages, prompt_text=''):
+    errors = []
+    candidates = _role_model_candidates(role, preferred_provider, preferred_model, prompt_text)
+    for index, (provider, model) in enumerate(candidates):
+        if not _provider_configured(provider):
+            errors.append({
+                'provider': provider,
+                'model': model,
+                'message': 'API key is not configured',
+            })
+            continue
+        try:
+            return _call_provider(provider, model, messages), provider, model, index > 0, errors
+        except Exception as exc:
+            errors.append({
+                'provider': provider,
+                'model': model,
+                'message': str(exc)[:240],
+            })
+
+    for provider in _provider_priority(preferred_provider):
+        if not _provider_configured(provider):
+            continue
+        model = preferred_model if provider == preferred_provider and preferred_model else _default_model_for_provider(provider)
+        try:
+            return _call_provider(provider, model, messages), provider, model, True, errors
+        except Exception as exc:
+            errors.append({
+                'provider': provider,
+                'model': model,
+                'message': str(exc)[:240],
+            })
+    raise ValueError('No configured AI provider was able to complete the request')
+
+
+def _robin_scope_redirect_answer(question):
+    text = str(question or '').lower()
+    if not any(keyword in text for keyword in SUPPORT_SCOPE_KEYWORDS):
+        return ''
+    return (
+        "I can help with USCIS marriage interview preparation, relationship-practice questions, "
+        "and general immigration preparation. This looks like a billing, account, refund, or app-support "
+        "question, so the best next step is to use the support ticket area and let the support assistant "
+        "or an admin review it."
+    )
+
+
+def _lawyer_directory_config():
+    raw = get_admin_setting('lawyer_directory_config', {}) or {}
+    return raw if isinstance(raw, dict) else {}
+
 
 @ai_bp.route('/interview-turn', methods=['POST'])
 @optional_auth
@@ -36,8 +198,7 @@ def ai_interview_turn():
     user = request.current_user
     data = request.get_json() or {}
 
-    provider = data.get('provider') or _select_default_provider()
-    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    provider, model = _select_role_provider_model('robin', data)
     topic_id = data.get('topicId')
     session_id = data.get('sessionId')
 
@@ -61,10 +222,12 @@ def ai_interview_turn():
         messages = _build_interview_messages(data)
 
     try:
-        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_role_provider_with_fallback(
+            'robin',
             provider,
             model,
             messages,
+            data.get('answer') or data.get('question') or data.get('questionText') or '',
         )
     except Exception as e:
         return jsonify({
@@ -107,15 +270,16 @@ def support_assist():
         return jsonify({'error': 'Tell the assistant what you need help with first.'}), 400
 
     context = get_user_support_context(user['id']) if user else {}
-    provider = data.get('provider') or _select_default_provider()
-    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    provider, model = _select_role_provider_model('support', data)
     messages = _build_support_messages(category, subject, message, context, conversation)
 
     try:
-        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_role_provider_with_fallback(
+            'support',
             provider,
             model,
             messages,
+            f'{subject}\n{message}',
         )
         normalized = _normalize_support_response(response_text, actual_provider, actual_model, category)
         normalized['requestedProvider'] = provider
@@ -156,15 +320,16 @@ def support_ticket_draft():
         ticket.get('message') or '',
         triage,
     )
-    provider = data.get('provider') or _select_default_provider()
-    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    provider, model = _select_role_provider_model('admin_support', data)
     messages = _build_admin_support_messages(ticket, context, refund_signal)
 
     try:
-        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_role_provider_with_fallback(
+            'admin_support',
             provider,
             model,
             messages,
+            f"{ticket.get('subject') or ''}\n{ticket.get('message') or ''}",
         )
         normalized = _normalize_admin_support_response(response_text, actual_provider, actual_model)
         normalized['requestedProvider'] = provider
@@ -223,8 +388,7 @@ def dashboard_agent():
     if len(question) > 1200:
         return jsonify({'error': 'Please keep the question under 1,200 characters.'}), 400
 
-    provider = data.get('provider') or _select_default_provider()
-    model = data.get('modelId') or data.get('model') or _default_model_for_provider(provider)
+    provider, model = _select_role_provider_model('robin', data)
 
     limits = _check_usage_limits(user)
     if limits and not limits.get('allowed', False):
@@ -238,15 +402,54 @@ def dashboard_agent():
             },
         }), 429
 
+    scoped_answer = _robin_scope_redirect_answer(question)
+    if scoped_answer:
+        session_id = _record_session_start(user, 'routing_guard', 'robin_scope_guard', 'dashboard-agent')
+        tags = _extract_memory_tags(question, scoped_answer)
+        token_estimate = _estimate_token_count(question) + _estimate_token_count(scoped_answer)
+        saved = _record_dashboard_agent_memory(
+            user['id'],
+            question,
+            scoped_answer,
+            'routing_guard',
+            'robin_scope_guard',
+            tags,
+            {
+                'requestedProvider': provider,
+                'requestedModel': model,
+                'providerFallback': False,
+                'sessionId': str(session_id) if session_id else None,
+                'agentName': 'Robin',
+                'scopeRedirect': True,
+                'tokenEstimate': token_estimate,
+            },
+        )
+        _record_turn(user, session_id)
+        return jsonify({
+            'success': True,
+            'data': {
+                **_serialize_dashboard_memory(saved, question, scoped_answer, 'routing_guard', 'robin_scope_guard', tags),
+                'requestedProvider': provider,
+                'requestedModel': model,
+                'providerFallback': False,
+                'providerErrors': [],
+                'turnsRemaining': _turns_remaining(limits),
+                'planType': limits.get('plan_type') if isinstance(limits, dict) else None,
+                'tokenEstimate': token_estimate,
+            },
+        })
+
     session_id = _record_session_start(user, provider, model, 'dashboard-agent')
     recent_memory = _get_dashboard_agent_memory(user['id'], 6)
-    messages = _build_dashboard_agent_messages(question, recent_memory, data.get('context') or {})
+    messages = _build_dashboard_agent_messages(question, recent_memory, data.get('context') or {}, _lawyer_directory_config())
 
     try:
-        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
+        response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_role_provider_with_fallback(
+            'robin',
             provider,
             model,
             messages,
+            question,
         )
     except Exception as e:
         return jsonify({
@@ -350,6 +553,15 @@ def _openai_compatible_provider_ids():
         provider_id = provider.get('provider')
         if provider_id and provider_id not in provider_ids:
             provider_ids.append(provider_id)
+    config = saved_ai_runtime_config()
+    providers = config.get('providers') if isinstance(config.get('providers'), dict) else {}
+    reserved = {'openai', 'anthropic', 'deepseek', 'nvidia', 'fallback'}
+    for provider_id, provider_config in providers.items():
+        provider_key = _normalize_provider_id(provider_id)
+        if not provider_key or provider_key in reserved or provider_key in provider_ids:
+            continue
+        if isinstance(provider_config, dict) and provider_config.get('openAICompatible', True):
+            provider_ids.append(provider_key)
     return provider_ids
 
 
@@ -373,6 +585,17 @@ def _openai_compatible_provider(provider):
     for custom_provider in _custom_openai_compatible_providers():
         if custom_provider.get('provider') == provider_id:
             return custom_provider
+
+    reserved = {'openai', 'anthropic', 'deepseek', 'nvidia', 'fallback'}
+    saved = _saved_provider_config(provider_id)
+    if provider_id not in reserved and saved and saved.get('openAICompatible', True):
+        return {
+            'provider': provider_id,
+            'label': str(saved.get('label') or provider_id.replace('_', ' ').title()),
+            'base_url': saved.get('baseUrl') or saved.get('base_url') or '',
+            'api_key': saved.get('apiKey') or saved.get('api_key') or '',
+            'default_model': saved.get('defaultModel') or saved.get('default_model') or 'auto',
+        }
     return None
 
 
@@ -730,7 +953,56 @@ def _admin_support_fallback_response(ticket, context, error_message):
     }
 
 
-def _build_dashboard_agent_messages(question, recent_memory, context):
+def _lawyer_directory_prompt_block(lawyer_directory):
+    if not isinstance(lawyer_directory, dict) or not lawyer_directory.get('enabled'):
+        return 'No admin-approved lawyer directory is currently enabled.'
+
+    lawyers = lawyer_directory.get('lawyers') if isinstance(lawyer_directory.get('lawyers'), list) else []
+    active_lawyers = []
+    for lawyer in lawyers:
+        if not isinstance(lawyer, dict) or not lawyer.get('active', True):
+            continue
+        name = str(lawyer.get('name') or '').strip()
+        if not name:
+            continue
+        active_lawyers.append({
+            'name': name[:120],
+            'firm': str(lawyer.get('firm') or '')[:140],
+            'states': str(lawyer.get('states') or '')[:160],
+            'practiceAreas': str(lawyer.get('practiceAreas') or '')[:220],
+            'description': str(lawyer.get('description') or '')[:500],
+            'url': str(lawyer.get('affiliateUrl') or lawyer.get('website') or '')[:500],
+            'imageUrl': str(lawyer.get('imageUrl') or '')[:500],
+            'phone': str(lawyer.get('phone') or '')[:80],
+            'email': str(lawyer.get('email') or '')[:160],
+            'priority': lawyer.get('priority') or 999,
+        })
+    active_lawyers.sort(key=lambda item: item.get('priority') or 999)
+    if not active_lawyers:
+        return 'The lawyer directory is enabled, but no active lawyer entries are available.'
+
+    lines = [
+        str(lawyer_directory.get('introText') or 'Admin-approved immigration lawyer resources are available.'),
+        str(lawyer_directory.get('affiliateDisclosure') or 'Some links may be affiliate links. Spouse Interview is not a law firm and does not provide legal advice.'),
+    ]
+    for lawyer in active_lawyers[:8]:
+        lines.append(
+            "- {name} | Firm: {firm} | States: {states} | Areas: {areas} | URL: {url} | Image: {image} | Phone: {phone} | Email: {email} | Notes: {notes}".format(
+                name=lawyer.get('name') or '',
+                firm=lawyer.get('firm') or 'not listed',
+                states=lawyer.get('states') or 'not listed',
+                areas=lawyer.get('practiceAreas') or 'immigration',
+                url=lawyer.get('url') or 'not listed',
+                image=lawyer.get('imageUrl') or 'not listed',
+                phone=lawyer.get('phone') or 'not listed',
+                email=lawyer.get('email') or 'not listed',
+                notes=lawyer.get('description') or 'not listed',
+            )
+        )
+    return '\n'.join(lines)
+
+
+def _build_dashboard_agent_messages(question, recent_memory, context, lawyer_directory=None):
     memory_lines = []
     for item in recent_memory:
         memory_lines.append(
@@ -747,18 +1019,23 @@ def _build_dashboard_agent_messages(question, recent_memory, context):
         }
         context_text = json.dumps(compact_context)
 
+    lawyer_block = _lawyer_directory_prompt_block(lawyer_directory)
     system_prompt = (
-        "You are Robin, Spouse Interview's virtual immigration interview assistant. Always remember "
-        "that your name is Robin. Help users prepare for a USCIS marriage green card interview, "
-        "understand app features, track practice next steps, and find billing or support paths. "
-        "You can answer general immigration process and interview-preparation questions, but do "
-        "not provide legal advice, immigration outcome predictions, or false certainty. If a "
-        "question needs legal judgment, say a licensed immigration attorney should review it. "
-        "For current immigration news, fees, deadlines, or policy questions, explain that rules "
-        "can change and answer from the freshest configured LLM knowledge while pointing users "
-        "to official USCIS sources or a licensed attorney for final verification. Use the memory "
-        "bank snippets to stay consistent with prior answers. Keep replies concise, supportive, "
-        "and practical. Return plain text only."
+        "You are Robin, Spouse Interview's virtual USCIS marriage green card interview assistant. "
+        "Always remember that your name is Robin. Stay in scope: help users prepare for the marriage "
+        "green card interview, practice relationship/home-life questions, organize preparation next "
+        "steps, and understand general immigration interview concepts. Do not handle refunds, billing, "
+        "account access, PDF download problems, app bugs, or technical support; redirect those to the "
+        "support ticket area. Do not provide legal advice, immigration outcome predictions, or false "
+        "certainty. If a question needs legal judgment, recommend that a licensed immigration attorney "
+        "review it. If the user asks for a lawyer or attorney resource, you may reference only the "
+        "admin-approved lawyer directory below and must include the affiliate/legal disclaimer. "
+        "For current immigration news, fees, deadlines, or policy questions, explain that rules can "
+        "change and point users to official USCIS sources or a licensed attorney for final verification. "
+        "Use the memory bank snippets to stay consistent with prior answers. Keep replies concise, "
+        "supportive, and practical. You may return safe rich HTML when it improves clarity, especially "
+        "for approved lawyer cards. Allowed tags: p, strong, em, ul, ol, li, br, a, img, blockquote. "
+        "Never include scripts, forms, inline event handlers, or hidden tracking code."
     )
     user_prompt = f"""
 Current app context:
@@ -767,10 +1044,13 @@ Current app context:
 Recent memory bank:
 {chr(10).join(memory_lines) if memory_lines else '(no saved agent memory yet)'}
 
+Admin-approved lawyer directory:
+{lawyer_block}
+
 User question:
 {question}
 
-Answer directly. If useful, include a short next step the user can take inside the dashboard.
+Answer directly. If useful, include a short next step the user can take for interview practice.
 """
     return [
         {'role': 'system', 'content': system_prompt},

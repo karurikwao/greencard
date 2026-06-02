@@ -23,6 +23,9 @@ export interface AdminProviderStatus {
 
 export interface AdminAIProviderSetting {
   enabled?: boolean;
+  label?: string;
+  openAICompatible?: boolean;
+  custom?: boolean;
   defaultModel?: string;
   baseUrl?: string;
   apiKey?: string;
@@ -31,11 +34,46 @@ export interface AdminAIProviderSetting {
   apiKeyMasked?: string;
 }
 
+export type AdminAIRoleId = 'robin' | 'support' | 'admin_support';
+
+export interface AdminAIRoleAssignment {
+  label: string;
+  routingPolicy: string;
+  defaultModelRef: string;
+  enabledModelRefs: string[];
+  fallbackModelRefs: string[];
+}
+
 export interface AdminAISettings {
   defaultProvider: string;
   defaultModel: string;
   fallbackProviders: string[];
   providers: Record<string, AdminAIProviderSetting>;
+  modelCatalog?: Record<string, string[]>;
+  roleAssignments?: Record<AdminAIRoleId, AdminAIRoleAssignment>;
+}
+
+export interface AdminLawyerDirectoryEntry {
+  id: string;
+  active: boolean;
+  name: string;
+  firm: string;
+  states: string;
+  practiceAreas: string;
+  description: string;
+  website: string;
+  affiliateUrl: string;
+  imageUrl: string;
+  email: string;
+  phone: string;
+  priority: number;
+}
+
+export interface AdminLawyerDirectorySettings {
+  enabled: boolean;
+  introText: string;
+  affiliateDisclosure: string;
+  lawyers: AdminLawyerDirectoryEntry[];
 }
 
 export interface AdminWelcomeMessageSettings {
@@ -137,6 +175,27 @@ export async function fetchAdminAISettings(): Promise<AdminAISettings> {
 
 export async function saveAdminAISettings(settings: AdminAISettings): Promise<AdminAISettings> {
   const payload = await adminJson<{ success: boolean; settings: AdminAISettings }>('/api/admin/ai-settings', 'POST', settings);
+  return payload.settings;
+}
+
+export async function refreshAdminAIProviderModels(
+  provider: string,
+  providerConfig?: AdminAIProviderSetting
+): Promise<string[]> {
+  const payload = await adminJson<{ success: boolean; provider: string; models: string[] }>('/api/admin/ai-provider-models', 'POST', {
+    provider,
+    providerConfig,
+  });
+  return payload.models || [];
+}
+
+export async function fetchAdminLawyerDirectory(): Promise<AdminLawyerDirectorySettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminLawyerDirectorySettings }>('/api/admin/lawyer-directory');
+  return payload.settings;
+}
+
+export async function saveAdminLawyerDirectory(settings: AdminLawyerDirectorySettings): Promise<AdminLawyerDirectorySettings> {
+  const payload = await adminJson<{ success: boolean; settings: AdminLawyerDirectorySettings }>('/api/admin/lawyer-directory', 'POST', settings);
   return payload.settings;
 }
 

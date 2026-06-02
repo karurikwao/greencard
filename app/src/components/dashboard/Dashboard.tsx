@@ -858,8 +858,8 @@ export function Dashboard({
                 <div>
                   <h3 className="text-lg font-extrabold text-slate-950">Chat with Robin</h3>
                   <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-700">
-                    Ask Robin about USCIS interview prep, billing, documents, and what to practice next. She keeps
-                    conversations grouped by date, tracks daily chat usage, and saves useful answers to the memory bank.
+                    Ask Robin about USCIS interview prep, relationship practice, evidence preparation, attorney resources,
+                    and what to rehearse next. She keeps conversations grouped by date, tracks daily chat usage, and saves useful answers to the memory bank.
                   </p>
                 </div>
               </div>

@@ -49,8 +49,9 @@ export function RobinPage({ onBack }: RobinPageProps) {
             <div>
               <h2 className="text-2xl font-extrabold text-slate-950">Robin keeps your practice conversations organized</h2>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-700">
-                Ask immigration interview questions, billing questions, and preparation questions in one dedicated chat area.
-                Answers are grouped by date and indexed into your memory bank for later review.
+                Ask immigration interview questions, relationship-practice questions, attorney-resource questions,
+                and preparation questions in one dedicated chat area. Answers are grouped by date and indexed into
+                your memory bank for later review.
               </p>
             </div>
           </div>

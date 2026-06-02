@@ -20,6 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { useOptionalAuth } from '@/lib/auth/AuthContext';
+import { RichMessageContent } from '@/components/messages/RichMessageContent';
 import {
   askDashboardAgent,
   loadDashboardAgentHistory,
@@ -155,8 +156,8 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                   Chat with Robin
                 </CardTitle>
                 <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-700">
-                  Robin is your virtual immigration interview assistant. She remembers this chat history,
-                  indexes helpful answers in the memory bank, and keeps daily chat usage visible.
+                  Robin is your virtual immigration interview assistant. She helps with USCIS marriage interview
+                  preparation, remembers this chat history, and keeps daily chat usage visible.
                 </p>
               </div>
             </div>
@@ -218,7 +219,7 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
               <Textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Ask Robin about interview prep, account access, billing, documents, USCIS-style questions, or what to practice next..."
+                placeholder="Ask Robin about USCIS marriage interview prep, relationship questions, evidence practice, attorney resources, or what to rehearse next..."
                 rows={isPageMode ? 9 : 7}
                 maxLength={1200}
                 className="min-h-48 border-indigo-200 bg-white text-base font-semibold text-slate-950 placeholder:text-slate-500 focus-visible:ring-indigo-500"
@@ -284,9 +285,10 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                             <p className="text-sm font-extrabold text-slate-950">{entry.question}</p>
                           </div>
                           <div className="mr-auto max-w-[94%] rounded-2xl rounded-tl-md border border-slate-200 bg-gradient-to-br from-white to-cyan-50/80 px-4 py-3 shadow-sm transition hover:border-cyan-200 hover:shadow-md">
-                            <p className="line-clamp-6 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-800">
-                              {entry.answer}
-                            </p>
+                            <RichMessageContent
+                              content={entry.answer}
+                              className="text-sm font-semibold leading-6 text-slate-800 [&_img]:max-h-32"
+                            />
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               {(entry.tags || []).slice(0, 5).map((tag) => (
                                 <span key={tag} className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-800">
@@ -350,9 +352,10 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                   <p className="text-sm font-extrabold text-slate-950">{selectedEntry.question}</p>
                 </div>
                 <div className="mr-auto max-w-3xl rounded-2xl rounded-tl-md border border-cyan-200 bg-gradient-to-br from-white to-cyan-50 px-4 py-4">
-                  <p className="whitespace-pre-wrap text-base font-semibold leading-7 text-slate-900">
-                    {selectedEntry.answer}
-                  </p>
+                  <RichMessageContent
+                    content={selectedEntry.answer}
+                    className="text-base font-semibold leading-7 text-slate-900 [&_img]:max-h-96"
+                  />
                   <div className="mt-4 flex flex-wrap gap-2">
                     {(selectedEntry.tags || []).map((tag) => (
                       <span key={tag} className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-extrabold text-indigo-800">
