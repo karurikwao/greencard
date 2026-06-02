@@ -42,6 +42,7 @@ export interface AdminAIRoleAssignment {
   defaultModelRef: string;
   enabledModelRefs: string[];
   fallbackModelRefs: string[];
+  fallbackTimeoutSeconds: number;
 }
 
 export interface AdminAISettings {

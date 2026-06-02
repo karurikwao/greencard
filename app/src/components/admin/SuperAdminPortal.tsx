@@ -1166,6 +1166,12 @@ const AI_ROLE_OPTIONS: Array<{ id: AdminAIRoleId; title: string; help: string }>
   },
 ];
 
+const DEFAULT_ROLE_TIMEOUTS: Record<AdminAIRoleId, number> = {
+  robin: 25,
+  support: 15,
+  admin_support: 25,
+};
+
 const DEFAULT_ROLE_SETTINGS = AI_ROLE_OPTIONS.reduce((acc, role) => {
   acc[role.id] = {
     label: role.title,
@@ -1173,6 +1179,7 @@ const DEFAULT_ROLE_SETTINGS = AI_ROLE_OPTIONS.reduce((acc, role) => {
     defaultModelRef: '',
     enabledModelRefs: [],
     fallbackModelRefs: [],
+    fallbackTimeoutSeconds: DEFAULT_ROLE_TIMEOUTS[role.id],
   };
   return acc;
 }, {} as NonNullable<AdminAISettings['roleAssignments']>);
@@ -1646,6 +1653,31 @@ function AIConfigTab() {
                               <option value="cost_first">Cost first</option>
                               <option value="quality_first">Quality first</option>
                             </select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="font-bold text-slate-900">Fallback timeout</Label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={8}
+                                max={120}
+                                step={1}
+                                value={roleSettings.fallbackTimeoutSeconds ?? DEFAULT_ROLE_TIMEOUTS[role.id]}
+                                onChange={(event) => {
+                                  const parsed = Number.parseInt(event.target.value, 10);
+                                  const next = Number.isFinite(parsed)
+                                    ? Math.max(8, Math.min(120, parsed))
+                                    : DEFAULT_ROLE_TIMEOUTS[role.id];
+                                  updateRoleAssignment(role.id, { fallbackTimeoutSeconds: next });
+                                }}
+                                className="h-10 w-24 border-slate-300 bg-white text-xs font-bold text-slate-950"
+                              />
+                              <span className="text-xs font-bold uppercase tracking-wide text-slate-600">seconds</span>
+                            </div>
+                            <p className="text-xs font-semibold leading-5 text-slate-600">
+                              If the current model does not answer in time, the next fallback model is tried.
+                            </p>
                           </div>
 
                           <div className="flex flex-wrap gap-2">

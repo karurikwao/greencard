@@ -30,6 +30,13 @@ VALID_FEEDBACK_LABELS = {
 }
 
 AI_ROLE_IDS = {'robin', 'support', 'admin_support'}
+AI_ROLE_FALLBACK_TIMEOUT_DEFAULTS = {
+    'robin': 25,
+    'support': 15,
+    'admin_support': 25,
+}
+AI_FALLBACK_TIMEOUT_MIN = 8
+AI_FALLBACK_TIMEOUT_MAX = 120
 
 SUPPORT_SCOPE_KEYWORDS = (
     'refund', 'billing', 'bill', 'payment', 'charge', 'charged', 'stripe',
@@ -66,6 +73,24 @@ def _role_assignment(role):
     roles = config.get('roleAssignments') if isinstance(config.get('roleAssignments'), dict) else {}
     role_config = roles.get(role_id) if isinstance(roles, dict) else {}
     return role_config if isinstance(role_config, dict) else {}
+
+
+def _clamp_timeout_seconds(value, default_value):
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        seconds = int(default_value)
+    return max(AI_FALLBACK_TIMEOUT_MIN, min(AI_FALLBACK_TIMEOUT_MAX, seconds))
+
+
+def _role_fallback_timeout(role):
+    role_id = str(role or '').strip().lower()
+    default_timeout = AI_ROLE_FALLBACK_TIMEOUT_DEFAULTS.get(role_id, 25)
+    role_config = _role_assignment(role_id)
+    return _clamp_timeout_seconds(
+        role_config.get('fallbackTimeoutSeconds') or role_config.get('fallback_timeout_seconds'),
+        default_timeout,
+    )
 
 
 def _append_candidate(candidates, seen, provider, model):
@@ -143,6 +168,7 @@ def _select_role_provider_model(role, data=None):
 def _call_role_provider_with_fallback(role, preferred_provider, preferred_model, messages, prompt_text=''):
     errors = []
     candidates = _role_model_candidates(role, preferred_provider, preferred_model, prompt_text)
+    timeout_seconds = _role_fallback_timeout(role)
     for index, (provider, model) in enumerate(candidates):
         if not _provider_configured(provider):
             errors.append({
@@ -152,11 +178,12 @@ def _call_role_provider_with_fallback(role, preferred_provider, preferred_model,
             })
             continue
         try:
-            return _call_provider(provider, model, messages), provider, model, index > 0, errors
+            return _call_provider(provider, model, messages, timeout_seconds), provider, model, index > 0, errors
         except Exception as exc:
             errors.append({
                 'provider': provider,
                 'model': model,
+                'timeoutSeconds': timeout_seconds,
                 'message': str(exc)[:240],
             })
 
@@ -165,11 +192,12 @@ def _call_role_provider_with_fallback(role, preferred_provider, preferred_model,
             continue
         model = preferred_model if provider == preferred_provider and preferred_model else _default_model_for_provider(provider)
         try:
-            return _call_provider(provider, model, messages), provider, model, True, errors
+            return _call_provider(provider, model, messages, timeout_seconds), provider, model, True, errors
         except Exception as exc:
             errors.append({
                 'provider': provider,
                 'model': model,
+                'timeoutSeconds': timeout_seconds,
                 'message': str(exc)[:240],
             })
     raise ValueError('No configured AI provider was able to complete the request')
@@ -248,6 +276,7 @@ def ai_interview_turn():
     normalized['requestedProvider'] = provider
     normalized['requestedModel'] = model
     normalized['providerFallback'] = fallback_used
+    normalized['providerTimeoutSeconds'] = _role_fallback_timeout('robin')
     normalized['providerErrors'] = provider_errors[-2:]
 
     return jsonify({
@@ -285,6 +314,7 @@ def support_assist():
         normalized['requestedProvider'] = provider
         normalized['requestedModel'] = model
         normalized['providerFallback'] = fallback_used
+        normalized['providerTimeoutSeconds'] = _role_fallback_timeout('support')
         normalized['providerErrors'] = provider_errors[-2:]
     except Exception as e:
         normalized = _support_fallback_response(category, subject, message, str(e))
@@ -335,6 +365,7 @@ def support_ticket_draft():
         normalized['requestedProvider'] = provider
         normalized['requestedModel'] = model
         normalized['providerFallback'] = fallback_used
+        normalized['providerTimeoutSeconds'] = _role_fallback_timeout('admin_support')
         normalized['providerErrors'] = provider_errors[-2:]
     except Exception as e:
         normalized = _admin_support_fallback_response(ticket, context, str(e))
@@ -1212,23 +1243,24 @@ def _select_default_provider():
     return 'fallback'
 
 
-def _call_provider(provider, model, messages):
+def _call_provider(provider, model, messages, timeout_seconds=None):
     custom_provider = _openai_compatible_provider(provider)
     if custom_provider:
-        return _call_openai_compatible_provider(custom_provider, model, messages)
+        return _call_openai_compatible_provider(custom_provider, model, messages, timeout_seconds)
     if provider == 'anthropic':
-        return _call_anthropic(model, messages)
+        return _call_anthropic(model, messages, timeout_seconds)
     if provider == 'deepseek':
-        return _call_deepseek(model, messages)
+        return _call_deepseek(model, messages, timeout_seconds)
     if provider == 'nvidia':
-        return _call_nvidia(model, messages)
+        return _call_nvidia(model, messages, timeout_seconds)
     if provider == 'openai':
-        return _call_openai(model, messages)
+        return _call_openai(model, messages, timeout_seconds)
     raise ValueError(f'Unsupported AI provider: {provider}')
 
 
-def _call_provider_with_fallback(preferred_provider, preferred_model, messages):
+def _call_provider_with_fallback(preferred_provider, preferred_model, messages, timeout_seconds=None):
     errors = []
+    timeout_seconds = _clamp_timeout_seconds(timeout_seconds, 30)
     for provider in _provider_priority(preferred_provider):
         if not _provider_configured(provider):
             errors.append({
@@ -1238,10 +1270,11 @@ def _call_provider_with_fallback(preferred_provider, preferred_model, messages):
             continue
         model = preferred_model if provider == preferred_provider else _default_model_for_provider(provider)
         try:
-            return _call_provider(provider, model, messages), provider, model, provider != preferred_provider, errors
+            return _call_provider(provider, model, messages, timeout_seconds), provider, model, provider != preferred_provider, errors
         except Exception as exc:
             errors.append({
                 'provider': provider,
+                'timeoutSeconds': timeout_seconds,
                 'message': str(exc)[:240],
             })
     raise ValueError('No configured AI provider was able to complete the request')
@@ -1405,7 +1438,7 @@ def _fallback_follow_up(data):
     return f"What specific detail could you add to make your answer to \"{prompt}\" feel more natural?"
 
 
-def _call_openai(model, messages):
+def _call_openai(model, messages, timeout_seconds=None):
     api_key = _saved_provider_value('openai', 'apiKey') or _saved_provider_value('openai', 'api_key') or OPENAI_API_KEY
     if not api_key:
         raise ValueError('OpenAI API key not configured')
@@ -1414,13 +1447,13 @@ def _call_openai(model, messages):
         'https://api.openai.com/v1/chat/completions',
         headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model, 'messages': messages, 'max_tokens': 500},
-        timeout=30
+        timeout=_clamp_timeout_seconds(timeout_seconds, 30)
     )
     resp.raise_for_status()
     return resp.json()['choices'][0]['message']['content']
 
 
-def _call_openai_compatible(base_url, api_key, model, messages):
+def _call_openai_compatible(base_url, api_key, model, messages, timeout_seconds=None):
     if not api_key:
         raise ValueError('API key not configured')
     if not base_url:
@@ -1430,22 +1463,23 @@ def _call_openai_compatible(base_url, api_key, model, messages):
         f'{base_url.rstrip("/")}/chat/completions',
         headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model, 'messages': messages, 'max_tokens': 700, 'temperature': 0.25},
-        timeout=90
+        timeout=_clamp_timeout_seconds(timeout_seconds, 90)
     )
     resp.raise_for_status()
     return resp.json()['choices'][0]['message']['content']
 
 
-def _call_openai_compatible_provider(provider_config, model, messages):
+def _call_openai_compatible_provider(provider_config, model, messages, timeout_seconds=None):
     return _call_openai_compatible(
         provider_config.get('base_url') or '',
         provider_config.get('api_key') or '',
         model or provider_config.get('default_model') or 'auto',
         messages,
+        timeout_seconds,
     )
 
 
-def _call_anthropic(model, messages):
+def _call_anthropic(model, messages, timeout_seconds=None):
     api_key = _saved_provider_value('anthropic', 'apiKey') or _saved_provider_value('anthropic', 'api_key') or ANTHROPIC_API_KEY
     if not api_key:
         raise ValueError('Anthropic API key not configured')
@@ -1471,13 +1505,13 @@ def _call_anthropic(model, messages):
             'system': system_msg,
             'messages': user_messages,
         },
-        timeout=30
+        timeout=_clamp_timeout_seconds(timeout_seconds, 30)
     )
     resp.raise_for_status()
     return resp.json()['content'][0]['text']
 
 
-def _call_deepseek(model, messages):
+def _call_deepseek(model, messages, timeout_seconds=None):
     api_key = _saved_provider_value('deepseek', 'apiKey') or _saved_provider_value('deepseek', 'api_key') or DEEPSEEK_API_KEY
     if not api_key:
         raise ValueError('DeepSeek API key not configured')
@@ -1486,17 +1520,18 @@ def _call_deepseek(model, messages):
         'https://api.deepseek.com/v1/chat/completions',
         headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
         json={'model': model or 'deepseek-chat', 'messages': messages, 'max_tokens': 500},
-        timeout=30
+        timeout=_clamp_timeout_seconds(timeout_seconds, 30)
     )
     resp.raise_for_status()
     return resp.json()['choices'][0]['message']['content']
 
 
-def _call_nvidia(model, messages):
+def _call_nvidia(model, messages, timeout_seconds=None):
     api_key = _saved_provider_value('nvidia', 'apiKey') or _saved_provider_value('nvidia', 'api_key') or NVIDIA_API_KEY
     return _call_openai_compatible(
         'https://integrate.api.nvidia.com/v1',
         api_key,
         model or 'meta/llama-3.1-8b-instruct',
         messages,
+        timeout_seconds,
     )

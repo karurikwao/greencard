@@ -31,6 +31,7 @@ from routes.ai_routes import (
     _normalize_provider_id,
     _openai_compatible_provider,
     _normalize_support_response,
+    _role_fallback_timeout,
     _select_default_provider,
     _support_fallback_response,
 )
@@ -54,6 +55,7 @@ AI_ROLE_DEFAULTS = {
         'enabledModelRefs': [],
         'fallbackModelRefs': [],
         'defaultModelRef': '',
+        'fallbackTimeoutSeconds': 25,
     },
     'support': {
         'label': 'User Support Assistant',
@@ -61,6 +63,7 @@ AI_ROLE_DEFAULTS = {
         'enabledModelRefs': [],
         'fallbackModelRefs': [],
         'defaultModelRef': '',
+        'fallbackTimeoutSeconds': 15,
     },
     'admin_support': {
         'label': 'Admin Support Drafts',
@@ -68,8 +71,20 @@ AI_ROLE_DEFAULTS = {
         'enabledModelRefs': [],
         'fallbackModelRefs': [],
         'defaultModelRef': '',
+        'fallbackTimeoutSeconds': 25,
     },
 }
+
+AI_FALLBACK_TIMEOUT_MIN = 8
+AI_FALLBACK_TIMEOUT_MAX = 120
+
+
+def _sanitize_fallback_timeout(value, default_value):
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        seconds = int(default_value)
+    return max(AI_FALLBACK_TIMEOUT_MIN, min(AI_FALLBACK_TIMEOUT_MAX, seconds))
 
 
 def _sanitize_string_list(value, max_items=120):
@@ -121,6 +136,10 @@ def _public_role_assignments(config=None):
             'fallbackModelRefs': _sanitize_string_list(role_config.get('fallbackModelRefs')) or [
                 item for item in enabled if item != default_ref
             ],
+            'fallbackTimeoutSeconds': _sanitize_fallback_timeout(
+                role_config.get('fallbackTimeoutSeconds') or role_config.get('fallback_timeout_seconds'),
+                defaults['fallbackTimeoutSeconds'],
+            ),
         }
     return roles
 
@@ -1496,16 +1515,19 @@ def _run_support_ai(category, subject, message, context, conversation):
     provider = _select_default_provider()
     model = _default_model_for_provider(provider)
     messages = _build_support_messages(category, subject, message, context, conversation)
+    timeout_seconds = _role_fallback_timeout('support')
     try:
         response_text, actual_provider, actual_model, fallback_used, provider_errors = _call_provider_with_fallback(
             provider,
             model,
             messages,
+            timeout_seconds=timeout_seconds,
         )
         normalized = _normalize_support_response(response_text, actual_provider, actual_model, category)
         normalized['requestedProvider'] = provider
         normalized['requestedModel'] = model
         normalized['providerFallback'] = fallback_used
+        normalized['providerTimeoutSeconds'] = timeout_seconds
         normalized['providerErrors'] = provider_errors[-2:]
         return normalized
     except Exception as e:
