@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   AlertCircle,
@@ -59,6 +59,12 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<DashboardAgentEntry | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState('');
+  const [latestEntryId, setLatestEntryId] = useState<string | null>(null);
+  const [scrollTarget, setScrollTarget] = useState<'pending' | 'answer' | null>(null);
+  const historyRegionRef = useRef<HTMLDivElement | null>(null);
+  const pendingResponseRef = useRef<HTMLDivElement | null>(null);
+  const latestAnswerRef = useRef<HTMLDivElement | null>(null);
 
   const isPageMode = mode === 'page';
 
@@ -106,6 +112,32 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
     };
   }, [history]);
 
+  useEffect(() => {
+    if (!scrollTarget) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const target = scrollTarget === 'pending' ? pendingResponseRef.current : latestAnswerRef.current;
+      if (!target) return;
+
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
+      const behavior: ScrollBehavior = prefersReducedMotion ? 'auto' : 'smooth';
+      const viewport = historyRegionRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+
+      if (scrollTarget === 'answer') {
+        viewport?.scrollTo({ top: 0, behavior });
+      }
+
+      target.scrollIntoView({
+        behavior,
+        block: isMobileViewport ? 'start' : 'nearest',
+      });
+      setScrollTarget(null);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [scrollTarget, history, isAsking]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = question.trim();
@@ -118,6 +150,9 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
 
     setIsAsking(true);
     setError(null);
+    setLatestEntryId(null);
+    setPendingQuestion(trimmed);
+    setScrollTarget('pending');
     const { data, error } = await askDashboardAgent(trimmed, {
       page: isPageMode ? 'robin' : 'dashboard',
       agentName: 'Robin',
@@ -127,10 +162,13 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
       setError(String(error.message || 'Robin is unavailable right now.'));
     } else if (data) {
       setHistory((current) => [data, ...current].slice(0, 30));
+      setLatestEntryId(data.id);
+      setScrollTarget('answer');
       setQuestion('');
     }
 
     setIsAsking(false);
+    setPendingQuestion('');
   };
 
   const visibleHistory = history.slice(0, isPageMode ? 30 : 12);
@@ -220,9 +258,9 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="Ask Robin about USCIS marriage interview prep, relationship questions, evidence practice, attorney resources, or what to rehearse next..."
-                rows={isPageMode ? 9 : 7}
+                rows={isPageMode ? 6 : 7}
                 maxLength={1200}
-                className="min-h-48 border-indigo-200 bg-white text-base font-semibold text-slate-950 placeholder:text-slate-500 focus-visible:ring-indigo-500"
+                className="min-h-40 border-indigo-200 bg-white text-base font-semibold text-slate-950 placeholder:text-slate-500 focus-visible:ring-indigo-500 lg:min-h-48"
               />
               {error && (
                 <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
@@ -249,7 +287,7 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
               </div>
             </form>
 
-            <div className="rounded-2xl border border-indigo-100 bg-white p-3 shadow-inner">
+            <div ref={historyRegionRef} className="rounded-2xl border border-indigo-100 bg-white p-3 shadow-inner">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-indigo-700" />
@@ -258,12 +296,29 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                 {isLoadingHistory && <Loader2 className="h-4 w-4 animate-spin text-indigo-700" />}
               </div>
 
-              {visibleHistory.length > 0 ? (
+              {(visibleHistory.length > 0 || isAsking) ? (
                 <ScrollArea className={cn('pr-3', isPageMode ? 'h-[620px]' : 'h-[430px]')}>
                   <div className="space-y-4">
+                    {isAsking && (
+                      <div
+                        ref={pendingResponseRef}
+                        className="mr-auto max-w-[94%] rounded-2xl rounded-tl-md border border-cyan-200 bg-gradient-to-br from-white to-cyan-50/80 px-4 py-3 shadow-sm"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-extrabold text-indigo-800">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Robin is answering
+                        </div>
+                        {pendingQuestion && (
+                          <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
+                            You asked: {pendingQuestion}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {visibleHistory.map((entry) => {
                       const dateLabel = formatDate(entry.createdAt);
                       const showDateLabel = dateLabel !== previousDateLabel;
+                      const isLatestEntry = entry.id === latestEntryId;
                       previousDateLabel = dateLabel;
 
                       return (
@@ -284,7 +339,18 @@ export function VirtualAgentPanel({ className, mode = 'card', onOpenFullPage }: 
                           <div className="ml-auto max-w-[92%] rounded-2xl rounded-tr-md border border-indigo-200 bg-indigo-50 px-4 py-3 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-100/80">
                             <p className="text-sm font-extrabold text-slate-950">{entry.question}</p>
                           </div>
-                          <div className="mr-auto max-w-[94%] rounded-2xl rounded-tl-md border border-slate-200 bg-gradient-to-br from-white to-cyan-50/80 px-4 py-3 shadow-sm transition hover:border-cyan-200 hover:shadow-md">
+                          <div
+                            ref={isLatestEntry ? latestAnswerRef : undefined}
+                            className={cn(
+                              'mr-auto scroll-mt-24 max-w-[94%] rounded-2xl rounded-tl-md border border-slate-200 bg-gradient-to-br from-white to-cyan-50/80 px-4 py-3 shadow-sm transition hover:border-cyan-200 hover:shadow-md',
+                              isLatestEntry && 'border-cyan-300 ring-2 ring-cyan-200'
+                            )}
+                          >
+                            {isLatestEntry && (
+                              <span className="mb-2 inline-flex rounded-full bg-cyan-100 px-2.5 py-1 text-xs font-extrabold text-cyan-900">
+                                Latest answer
+                              </span>
+                            )}
                             <RichMessageContent
                               content={entry.answer}
                               className="text-sm font-semibold leading-6 text-slate-800 [&_img]:max-h-32"
