@@ -121,7 +121,9 @@ export interface AdminSystemStatus {
     urlConfigured: boolean;
   };
   email: {
-    provider: 'plunk' | 'dev';
+    provider: 'resend' | 'plunk' | 'dev';
+    configured?: boolean;
+    resendConfigured?: boolean;
     plunkConfigured: boolean;
     fromConfigured: boolean;
     fromAddress: string;

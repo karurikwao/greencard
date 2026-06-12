@@ -2252,7 +2252,7 @@ function SystemTab() {
                 <Mail className="h-3.5 w-3.5" />
                 Email
               </div>
-              <div className="mt-2"><ConfigBadge configured={Boolean(status?.email.plunkConfigured)} /></div>
+              <div className="mt-2"><ConfigBadge configured={Boolean(status?.email.configured ?? status?.email.plunkConfigured)} /></div>
             </div>
           </div>
 

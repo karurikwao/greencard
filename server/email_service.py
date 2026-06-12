@@ -8,6 +8,7 @@ import requests
 
 
 PLUNK_SEND_URL = 'https://next-api.useplunk.com/v1/send'
+RESEND_SEND_URL = 'https://api.resend.com/emails'
 
 PLAN_LABELS = {
     'monthly': 'Premium Monthly',
@@ -28,14 +29,15 @@ def _frontend_url() -> str:
 
 def _from_address() -> str:
     return (
-        os.getenv('PLUNK_FROM_EMAIL')
+        os.getenv('RESEND_FROM_EMAIL')
+        or os.getenv('PLUNK_FROM_EMAIL')
         or os.getenv('EMAIL_FROM')
         or 'Spouse Interview <noreply@spouseinterview.com>'
     )
 
 
 def _reply_address() -> Optional[str]:
-    return os.getenv('PLUNK_REPLY_TO') or os.getenv('EMAIL_REPLY_TO') or None
+    return os.getenv('RESEND_REPLY_TO') or os.getenv('PLUNK_REPLY_TO') or os.getenv('EMAIL_REPLY_TO') or None
 
 
 def _clean_subject(subject: str) -> str:
@@ -51,6 +53,21 @@ def _tag_data(tags: Optional[List[Dict[str, str]]]) -> Dict[str, object]:
         if name and value:
             data[f'tag_{name}'] = {'value': value[:250], 'persistent': False}
 
+    return data
+
+
+def _resend_tag_value(value: str) -> str:
+    safe = ''.join(ch if ch.isalnum() or ch in ('_', '-') else '_' for ch in str(value or '').strip())
+    return (safe.strip('_') or 'spouse_interview')[:256]
+
+
+def _resend_tags(tags: Optional[List[Dict[str, str]]]) -> List[Dict[str, str]]:
+    data = [{'name': 'source', 'value': 'spouse_interview'}]
+    for tag in tags or []:
+        name = _resend_tag_value(str(tag.get('name') or ''))
+        value = _resend_tag_value(str(tag.get('value') or ''))
+        if name and value:
+            data.append({'name': name, 'value': value})
     return data
 
 
@@ -95,12 +112,88 @@ def send_email(
     tags: Optional[List[Dict[str, str]]] = None,
     idempotency_key: Optional[str] = None,
 ) -> Dict[str, object]:
-    api_key = (os.getenv('PLUNK_SECRET_KEY') or os.getenv('PLUNK_API_KEY') or '').strip()
+    resend_api_key = (os.getenv('RESEND_API_KEY') or '').strip()
+    plunk_api_key = (os.getenv('PLUNK_SECRET_KEY') or os.getenv('PLUNK_API_KEY') or '').strip()
 
-    if not api_key:
-        print(f'[DEV] Email skipped: PLUNK_SECRET_KEY/PLUNK_API_KEY is not configured for "{subject}" to {to_email}')
+    if not resend_api_key and not plunk_api_key:
+        print(f'[DEV] Email skipped: RESEND_API_KEY/PLUNK_SECRET_KEY/PLUNK_API_KEY is not configured for "{subject}" to {to_email}')
         return {'success': True, 'skipped': True}
 
+    if resend_api_key:
+        return _send_resend_email(
+            resend_api_key,
+            to_email,
+            subject,
+            html_body,
+            text_body,
+            tags,
+            idempotency_key,
+        )
+
+    return _send_plunk_email(
+        plunk_api_key,
+        to_email,
+        subject,
+        html_body,
+        text_body,
+        tags,
+        idempotency_key,
+    )
+
+
+def _send_resend_email(
+    api_key: str,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: Optional[str],
+    tags: Optional[List[Dict[str, str]]],
+    idempotency_key: Optional[str],
+) -> Dict[str, object]:
+    payload = {
+        'from': _from_address(),
+        'to': [to_email],
+        'subject': _clean_subject(subject),
+        'html': html_body or html_tools.escape(text_body or ''),
+        'text': text_body or _plain_text_from_rich(html_body or ''),
+        'tags': _resend_tags(tags),
+    }
+    reply_to = _reply_address()
+    if reply_to:
+        payload['reply_to'] = reply_to
+
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+    }
+    if idempotency_key:
+        headers['Idempotency-Key'] = idempotency_key[:256]
+
+    timeout_seconds = float(os.getenv('RESEND_TIMEOUT_SECONDS', os.getenv('EMAIL_TIMEOUT_SECONDS', '10')))
+    send_url = os.getenv('RESEND_API_URL', RESEND_SEND_URL)
+
+    try:
+        response = requests.post(send_url, json=payload, headers=headers, timeout=timeout_seconds)
+        if response.status_code >= 400:
+            print(f'Resend email failed ({response.status_code}) for "{subject}": {response.text[:500]}')
+            return {'success': False, 'error': response.text[:500], 'status_code': response.status_code}
+
+        data = response.json()
+        return {'success': True, 'id': data.get('id'), 'provider': 'resend'}
+    except requests.RequestException as exc:
+        print(f'Resend email request failed for "{subject}": {exc}')
+        return {'success': False, 'error': str(exc)}
+
+
+def _send_plunk_email(
+    api_key: str,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: Optional[str],
+    tags: Optional[List[Dict[str, str]]],
+    idempotency_key: Optional[str],
+) -> Dict[str, object]:
     payload = {
         'from': _from_address(),
         'to': to_email,
